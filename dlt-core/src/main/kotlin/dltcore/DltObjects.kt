@@ -1,4 +1,4 @@
-package lib
+package dltcore
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -20,44 +20,56 @@ enum class DltStorageVersion(val magicValue: Int) {
     }
 }
 
+data class DltReadProgress(
+    var index: Long,
+    var filePosition: Long?,
+    var fileSize: Long?
+)
+
 class DltMessageParser {
 
-    fun parseFileWithCallback(path: Path, callback: (DltMessage, Int) -> Unit) {
-        FileChannel.open(path).use { fileChannel ->
-            val buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size())
-
-            var i = 0
-            while (buffer.hasRemaining()) {
-                val magic = buffer.int
-                val version = DltStorageVersion.getByMagic(magic)
-                val message = try {
-                    parseDltMessage(buffer, version)
-                } catch (e: RuntimeException) {
-                    throw RuntimeException("Error while parsing message at index $i", e)
+    companion object {
+        fun parseFileWithCallback(path: Path, callback: (DltMessage, DltReadProgress) -> Unit) {
+            FileChannel.open(path).use { fileChannel ->
+                val buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size())
+                buffer.order(ByteOrder.BIG_ENDIAN)
+                val progress = DltReadProgress(0, 0, fileChannel.size())
+                while (buffer.hasRemaining()) {
+                    val magic = buffer.int
+                    val version = DltStorageVersion.getByMagic(magic)
+                    val message = try {
+                        parseDltMessage(buffer, version)
+                    } catch (e: RuntimeException) {
+                        throw RuntimeException("Error while parsing message at $progress", e)
+                    }
+                    progress.index++
+                    progress.filePosition = buffer.position().toLong()
+                    callback.invoke(message, progress)
                 }
-                callback.invoke(message, i++)
             }
+            System.gc() // JDK-4715154
         }
+
+        fun parseFileAsObjects(path: Path): List<DltMessage> {
+            val messages = mutableListOf<DltMessage>()
+            parseFileWithCallback(path) { message, _ ->
+                messages.add(message)
+            }
+            return messages
+        }
+
+        private fun parseDltMessage(buffer: ByteBuffer, version: DltStorageVersion): DltMessage =
+            when (version) {
+                DltStorageVersion.V1 -> DltMessageV1.fromByteBuffer(buffer)
+                DltStorageVersion.V2 -> throw UnsupportedOperationException("not supported yet")
+            }
+
     }
-
-    fun parseFileAsObjects(path: Path): List<DltMessage> {
-        val messages = mutableListOf<DltMessage>()
-        parseFileWithCallback(path) { message, _ ->
-            messages.add(message)
-        }
-        return messages
-    }
-
-    fun parseDltMessage(buffer: ByteBuffer, version: DltStorageVersion): DltMessage =
-        when (version) {
-            DltStorageVersion.V1 -> DltMessageV1.fromByteBuffer(buffer)
-            DltStorageVersion.V2 -> throw UnsupportedOperationException("not supported yet")
-        }
-
 }
 
 interface DltMessage {
     fun getVersion(): DltStorageVersion
+    fun write(bb: ByteBuffer)
 }
 
 class DltMessageV1(
@@ -72,6 +84,13 @@ class DltMessageV1(
     val messageTypeInfo: MessageTypeInfo?
         get() =
             extendedHeader?.messageTypeInfo
+
+    override fun write(bb: ByteBuffer) {
+        storageHeader.write(bb)
+        standardHeader.write(bb)
+        extendedHeader?.write(bb)
+        payload.write(bb)
+    }
 
     companion object {
         fun fromByteBuffer(buffer: ByteBuffer): DltMessageV1 {
@@ -100,12 +119,23 @@ class DltStorageHeaderV1(
     val timestampMicroseconds: Int, // microseconds in V1, Nanoseconds in V2
     val ecuId: Int, // 4 chars
 ) {
+    fun write(bb: ByteBuffer) {
+        bb.order(ByteOrder.BIG_ENDIAN)
+        bb.putInt(DltStorageVersion.V1.magicValue)
+
+        bb.order(ByteOrder.LITTLE_ENDIAN)
+        bb.putInt((timestampEpochSeconds and 0xFFFFFFFF).toInt())
+        bb.putInt(timestampMicroseconds)
+        bb.putInt(ecuId)
+    }
+
     val utcTimestamp: Instant by lazy {
         Instant.ofEpochSecond(timestampEpochSeconds, timestampMicroseconds.microseconds.inWholeNanoseconds)
     }
 
     companion object {
         fun fromByteBuffer(buffer: ByteBuffer): DltStorageHeaderV1 {
+            // why is this little endian, when all other headers are big?
             buffer.order(ByteOrder.LITTLE_ENDIAN)
 
             val timestampEpochSeconds = buffer.int.toUInt().toLong()
@@ -124,6 +154,23 @@ class DltStandardHeaderV1(
     val sessionId: Int?,
     val timestamp: UInt?,
 ) {
+    fun write(bb: ByteBuffer) {
+        // The Standard Header and the Extended Header shall be in big endian format (MSB first).
+        bb.order(ByteOrder.BIG_ENDIAN)
+        bb.put(htyp)
+        bb.put(mcnt.toByte())
+        bb.putShort(len.toShort())
+        if (ecuId != null) {
+            bb.putInt(ecuId)
+        }
+        if (sessionId != null) {
+            bb.putInt(sessionId)
+        }
+        if (timestamp != null) {
+            bb.putInt(timestamp.toInt())
+        }
+    }
+
     inline val useExtendedHeader: Boolean
         get() =
             htyp.and(HEADER_TYPE_UEH) > 0
@@ -231,6 +278,15 @@ class DltExtendedHeaderV1(
     val apid: Int, // application id
     val ctid: Int, // context id
 ) {
+    fun write(bb: ByteBuffer) {
+        bb.order(ByteOrder.BIG_ENDIAN)
+
+        bb.put(msin)
+        bb.put(noar)
+        bb.putInt(apid)
+        bb.putInt(ctid)
+    }
+
     val isVerbose: Boolean
         get() = (msin and MESSAGEINFO_VERB) > 0
 
@@ -275,7 +331,7 @@ class DltPayload(
     private val mostSignificantByteFirst: Boolean,
     private val extendedHeader: DltExtendedHeaderV1?
 ) {
-    private val byteOrder = if (mostSignificantByteFirst) ByteOrder.LITTLE_ENDIAN else ByteOrder.BIG_ENDIAN
+    private val byteOrder = if (mostSignificantByteFirst) ByteOrder.BIG_ENDIAN else ByteOrder.LITTLE_ENDIAN
 
     val logMessage: String by lazy {
         val bb = ByteBuffer.wrap(data)
@@ -303,16 +359,22 @@ class DltPayload(
         }
     }
 
+    fun write(bb: ByteBuffer) {
+        bb.order(byteOrder)
+
+        bb.put(data)
+    }
+
 
     companion object {
         fun fromByteBuffer(
-            buffer: ByteBuffer,
+            bb: ByteBuffer,
             len: Int,
             mostSignificantByteFirst: Boolean,
             extendedHeader: DltExtendedHeaderV1?
         ): DltPayload {
             val data = ByteArray(len)
-            buffer.get(data)
+            bb.get(data)
             return DltPayload(data, mostSignificantByteFirst, extendedHeader)
         }
     }
@@ -349,6 +411,7 @@ abstract class DltPayloadArgument(val argumentType: DltPayloadArgumentType, val 
         const val TYPEINFO_VARI = 0x0800
         const val TYPEINFO_FIXP = 0x1000
         const val TYPEINFO_MASK_TYLE = 0x7
+        const val TYPEINFO_MASK_STRING_ENCODING = 0x38000
 
         fun getVariableName(typeInfo: Int, bb: ByteBuffer): String? {
             if (typeInfo and TYPEINFO_VARI > 0) {
@@ -404,13 +467,13 @@ class DltPayloadArgumentString(val data: String, val charset: Charset, variableN
 
     companion object {
         fun fromByteBuffer(typeInfo: Int, bb: ByteBuffer, byteOrder: ByteOrder): DltPayloadArgumentString {
-            bb.order(ByteOrder.LITTLE_ENDIAN) // why isn't byte order from header used?
+            bb.order(byteOrder)
 
             val variableName = getVariableName(typeInfo, bb)
             val len = bb.short.toUShort().toInt()
             val data = ByteArray(len)
             bb.get(data)
-            val charset = when (val encoding = (typeInfo and 0x38000) shr 15) {
+            val charset = when (val encoding = (typeInfo and TYPEINFO_MASK_STRING_ENCODING) shr 15) {
                 0 -> Charsets.US_ASCII
                 1 -> Charsets.UTF_8
                 else -> throw IllegalStateException("Unknown string encoding $encoding")
@@ -432,7 +495,7 @@ class DltPayloadArgumentRawData(val data: String, variableName: String?) :
 
     companion object {
         fun fromByteBuffer(typeInfo: Int, bb: ByteBuffer, byteOrder: ByteOrder): DltPayloadArgumentRawData {
-            bb.order(ByteOrder.LITTLE_ENDIAN) // why isn't byte order from header used?
+            bb.order(byteOrder)
 
             val variableName = getVariableName(typeInfo, bb)
             val len = bb.short.toUShort().toInt()
@@ -464,6 +527,8 @@ class DltPayloadArgumentNumber(
             bb: ByteBuffer,
             byteOrder: ByteOrder
         ): DltPayloadArgumentNumber {
+            bb.order(byteOrder)
+
             val variableName = getVariableName(typeInfo, bb)
             val lenInfo = typeInfo and TYPEINFO_MASK_TYLE
             val lenInBytes = when (lenInfo) {
@@ -506,3 +571,4 @@ class DltPayloadArgumentNumber(
         }
     }
 }
+

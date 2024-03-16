@@ -1,6 +1,7 @@
 rootProject.name = "dlt-tools"
 
-include("dlt-library")
+include("dlt-core")
+include("dlt-filter-app")
 
 pluginManagement {
     repositories {

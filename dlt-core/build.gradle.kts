@@ -4,9 +4,6 @@ plugins {
     publishing
 }
 
-group = "de.debugco"
-version = "1.0-SNAPSHOT"
-
 repositories {
     mavenCentral()
 }
@@ -20,5 +17,5 @@ tasks.test {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(17)
 }
