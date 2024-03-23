@@ -23,4 +23,4 @@ fun Int.asStringValue() =
             if (this and 0xFF00 == 0) ' '.code.toByte() else (this and 0xFF00 shr 8).toByte(),
             if (this and 0xFF == 0) ' '.code.toByte() else (this and 0xFF).toByte(),
         ), Charsets.US_ASCII
-    ).trimEnd()
+    ).trim()

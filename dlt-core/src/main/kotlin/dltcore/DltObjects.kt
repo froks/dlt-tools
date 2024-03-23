@@ -119,6 +119,9 @@ class DltStorageHeaderV1(
     val timestampMicroseconds: Int, // microseconds in V1, Nanoseconds in V2
     val ecuId: Int, // 4 chars
 ) {
+    val ecuIdText: String
+        get() = ecuId.asStringValue()
+
     fun write(bb: ByteBuffer) {
         bb.order(ByteOrder.BIG_ENDIAN)
         bb.putInt(DltStorageVersion.V1.magicValue)
@@ -256,7 +259,9 @@ enum class MessageTypeInfo(val type: MessageType, val value: Int) {
     DLT_NW_TRACE_SOMEIP(MessageType.DLT_TYPE_NW_TRACE, 0x6),
 
     DLT_CONTROL_REQUEST(MessageType.DLT_TYPE_CONTROL, 0x5),
-    DLT_CONTROL_RESPONSE(MessageType.DLT_TYPE_CONTROL, 0x6);
+    DLT_CONTROL_RESPONSE(MessageType.DLT_TYPE_CONTROL, 0x6),
+
+    UNKNOWN(MessageType.DLT_TYPE_LOG, -1);
 
     companion object {
         fun getByMessageType(mstp: Int, mtin: Int) =
@@ -274,7 +279,7 @@ enum class MessageTypeInfo(val type: MessageType, val value: Int) {
 
 class DltExtendedHeaderV1(
     val msin: Byte, // message info
-    val noar: Byte, // numbeDltPayloadArgumentr of arguments
+    val noar: Byte, // number of arguments
     val apid: Int, // application id
     val ctid: Int, // context id
 ) {
