@@ -2,8 +2,10 @@ plugins {
     kotlin("jvm")
 }
 
-group = "de.debugco"
-version = "1.0-SNAPSHOT"
+allprojects {
+    group = "de.debugco"
+    version = "1.0.0"
+}
 
 repositories {
     mavenCentral()

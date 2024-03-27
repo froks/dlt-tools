@@ -1,13 +1,12 @@
 package dltfilterapp
 
+import com.formdev.flatlaf.FlatLightLaf
 import jiconfont.icons.google_material_design_icons.GoogleMaterialDesignIcons
 import jiconfont.swing.IconFontSwing
 import dltcore.DltMessageParser
 import dltcore.DltMessageV1
 import dltcore.asIntValue
-import java.awt.BorderLayout
-import java.awt.Color
-import java.awt.Cursor
+import java.awt.*
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.io.File
@@ -34,8 +33,9 @@ class DltFilterApp : JFrame("dlt-filter") {
             )
         }
 
-        UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName())
+        FlatLightLaf.setup();
         IconFontSwing.register(GoogleMaterialDesignIcons.getIconFont())
+
         this.iconImage = IconFontSwing.buildImage(GoogleMaterialDesignIcons.TRANSFORM, 20f, Color.GREEN)
         this.defaultCloseOperation = EXIT_ON_CLOSE
         this.addComponentListener(object : ComponentAdapter() {
@@ -103,7 +103,9 @@ class DltFilterApp : JFrame("dlt-filter") {
 
     private fun createProgressBar(): JProgressBar {
         progressBar = JProgressBar()
+        progressBar.preferredSize = Dimension(30, 30)
         progressBar.isStringPainted = true
+        progressBar.font = UIManager.getFont("large")
         progressBar.string = "set appids to filter and click process file"
         progressBar.maximum = 100
         progressBar.value = 0
