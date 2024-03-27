@@ -23,29 +23,39 @@ enum class DltStorageVersion(val magicValue: Int) {
 data class DltReadProgress(
     var index: Long,
     var filePosition: Long?,
-    var fileSize: Long?
+    var fileSize: Long?,
+    var progress: Float?,
 )
 
 class DltMessageParser {
 
     companion object {
+        fun parseWithCallback(buffer: ByteBuffer, totalSize: Long?, callback: (DltMessage, DltReadProgress) -> Unit) {
+            buffer.order(ByteOrder.BIG_ENDIAN)
+            val progress = DltReadProgress(0, null, totalSize, null)
+            while (buffer.hasRemaining()) {
+                val magic = buffer.int
+                val version = DltStorageVersion.getByMagic(magic)
+                val message = try {
+                    parseDltMessage(buffer, version)
+                } catch (e: RuntimeException) {
+                    throw RuntimeException("Error while parsing message at $progress", e)
+                }
+                progress.index++
+                progress.filePosition = buffer.position().toLong()
+                if (totalSize != null) {
+                    progress.progress = progress.filePosition!!.toFloat() / totalSize.toFloat()
+                } else {
+                    progress.progress = null
+                }
+                callback.invoke(message, progress)
+            }
+        }
+
         fun parseFileWithCallback(path: Path, callback: (DltMessage, DltReadProgress) -> Unit) {
             FileChannel.open(path).use { fileChannel ->
                 val buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size())
-                buffer.order(ByteOrder.BIG_ENDIAN)
-                val progress = DltReadProgress(0, 0, fileChannel.size())
-                while (buffer.hasRemaining()) {
-                    val magic = buffer.int
-                    val version = DltStorageVersion.getByMagic(magic)
-                    val message = try {
-                        parseDltMessage(buffer, version)
-                    } catch (e: RuntimeException) {
-                        throw RuntimeException("Error while parsing message at $progress", e)
-                    }
-                    progress.index++
-                    progress.filePosition = buffer.position().toLong()
-                    callback.invoke(message, progress)
-                }
+                parseWithCallback(buffer, fileChannel.size(), callback)
             }
             System.gc() // JDK-4715154
         }
@@ -262,6 +272,8 @@ enum class MessageTypeInfo(val type: MessageType, val value: Int) {
     DLT_CONTROL_RESPONSE(MessageType.DLT_TYPE_CONTROL, 0x6),
 
     UNKNOWN(MessageType.DLT_TYPE_LOG, -1);
+
+    val shortText = name.replaceFirst("DLT_LOG_", "").replaceFirst("DLT_", "")
 
     companion object {
         fun getByMessageType(mstp: Int, mtin: Int) =

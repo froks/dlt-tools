@@ -35,3 +35,6 @@ jobs:
             dlt-filter-app/build/compose/jars/dlt-filter*
             dlt-filter-app/build/compose/binaries/**/*.deb
             dlt-filter-app/build/compose/binaries/**/*.msi
+            dlt-analyzer-app/build/compose/jars/dlt-analyzer*
+            dlt-analyzer-app/build/compose/binaries/**/*.deb
+            dlt-analyzer-app/build/compose/binaries/**/*.msi
