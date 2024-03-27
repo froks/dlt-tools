@@ -21,6 +21,10 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test")
 }
 
+tasks.named("jar") {
+    dependsOn(":dlt-core:jar")
+}
+
 tasks.test {
     useJUnitPlatform()
 }

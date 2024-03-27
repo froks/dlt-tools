@@ -11,8 +11,10 @@ permissions:
 
 jobs:
   build_and_test:
-    runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        runs-on: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK
@@ -24,12 +26,12 @@ jobs:
         uses: gradle/gradle-build-action@v3
       - name: build and test
         run: |
-          ./gradlew build 
-          ./gradlew jar 
-          ./gradlew packageUberJarForCurrentOS
+          ./gradlew clean build test packageUberJarForCurrentOS packageDistributionForCurrentOS
       - name: upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: uber-jar
+          name: job-data-${{ matrix.runs-on }}
           path: |
             dlt-filter-app/build/compose/jars/dlt-filter*
+            dlt-filter-app/build/compose/binaries/**/*.deb
+            dlt-filter-app/build/compose/binaries/**/*.msi
