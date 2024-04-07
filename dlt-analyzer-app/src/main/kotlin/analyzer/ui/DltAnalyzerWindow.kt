@@ -1,173 +1,129 @@
 package analyzer.ui
 
-import analyzer.ui.swing.DltFileChooser
-import analyzer.ui.sxs.SideBySide
-import analyzer.ui.table.DltDataTable
-import androidx.compose.desktop.ui.tooling.preview.Preview
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.ViewWeek
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.SwingPanel
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.ApplicationScope
-import androidx.compose.ui.window.MenuBar
-import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.rememberWindowState
-import com.formdev.flatlaf.FlatLightLaf
+import analyzer.ui.helper.DltFileChooser
+import androidx.compose.runtime.NoLiveLiterals
+import com.formdev.flatlaf.FlatDarculaLaf
 import db.DltManager
 import db.DltTarget
+import jiconfont.icons.font_awesome.FontAwesome
 import jiconfont.icons.google_material_design_icons.GoogleMaterialDesignIcons
 import jiconfont.swing.IconFontSwing
 import org.slf4j.LoggerFactory
 import java.awt.BorderLayout
+import java.awt.Color
+import java.awt.Dimension
 import java.io.File
-import javax.swing.JOptionPane
-import javax.swing.JPanel
-import javax.swing.JScrollPane
+import javax.swing.*
+import kotlin.math.roundToInt
 
 private val logger = LoggerFactory.getLogger("dlt-analyzer")
 
-@Composable
-@Preview
-fun ApplicationScope.dltAnalyzerMainWindow(args: Array<String>) =
-    Window(
-        onCloseRequest = ::exitApplication,
-        title = "dlt-analyzer",
-        state = rememberWindowState(width = 1200.dp, height = 800.dp)
-    ) {
-        FlatLightLaf.setup();
+@NoLiveLiterals
+class DltAnalyzerWindow {
+    private var frame: JFrame
+    private var mainTabbedPane: DltMainTabbedPane
+    private var progressBar: JProgressBar
+
+    init {
+        FlatDarculaLaf.setup()
         IconFontSwing.register(GoogleMaterialDesignIcons.getIconFont())
+        IconFontSwing.register(FontAwesome.getIconFont())
 
+        frame = JFrame("dlt-analyzer")
 
-        var dltTarget by remember { mutableStateOf<DltTarget?>(null, policy = neverEqualPolicy()) }
-        var dltPercentLoaded by remember { mutableStateOf(-1.0f) }
-
-        fun openFile(file: File): DltTarget {
-            return DltManager.openFile(
-                dltFile = file,
-                waitForCompleteDatabase = false,
-                force = false,
-                onFinished = {
-                    // set dltTarget to a copy, to enforce update
-                    dltTarget = dltTarget?.copy()
-                }
-            ) { progress ->
-                dltPercentLoaded = progress.progress ?: 0.0f
+        val open = JMenuItem("Open...", 'O'.code)
+        open.addActionListener {
+            val f = DltFileChooser("Select dlt file", null, null).showDialog(null)
+            if (f != null) {
+                openFile(f)
             }
         }
-
-        LaunchedEffect(true) {
-            val autoOpenFile = if (args.size == 1) args[0] else System.getenv("DLT_FILE_AUTOOPEN")
-            if (autoOpenFile != null) {
-                val file = File(autoOpenFile)
-                if (file.exists()) {
-                    dltTarget = openFile(file)
-                } else {
-                    logger.info("File '${file.absolutePath} does not exist'")
-                }
-            }
+        val exit = JMenuItem("Exit", 'X'.code)
+        exit.addActionListener {
+            frame.dispose()
         }
 
-        MenuBar {
-            Menu("File", mnemonic = 'F') {
-                Item(
-                    text = "Open file",
-                    mnemonic = 'O',
-                    onClick = {
-                        val f = DltFileChooser("Select dlt file", null, null).showDialog(null)
-                        if (f != null) {
-                            dltTarget = openFile(f)
-                        }
-                    }
-                )
-            }
-        }
-        DltAnalyzerMain(dltTarget, dltPercentLoaded)
+        val fileMenu = JMenu("File")
+        fileMenu.mnemonic = 'F'.code
+        fileMenu.add(open)
+        fileMenu.add(JSeparator())
+        fileMenu.add(exit)
+
+        val menuBar = JMenuBar()
+        menuBar.add(fileMenu)
+
+        frame.jMenuBar = menuBar
+        frame.size = Dimension(1200, 800)
+        frame.minimumSize = Dimension(800, 600)
+        frame.defaultCloseOperation = JFrame.DISPOSE_ON_CLOSE
+        frame.iconImage = IconFontSwing.buildImage(GoogleMaterialDesignIcons.APPS, 20f, Color.orange)
+        frame.setLocationRelativeTo(null)
+
+        mainTabbedPane = DltMainTabbedPane()
+        frame.add(mainTabbedPane, BorderLayout.CENTER)
+
+        progressBar = JProgressBar(0, 100)
+        progressBar.string = "Please select file"
+        progressBar.isStringPainted = true
+        progressBar.isVisible = true
+        frame.add(progressBar, BorderLayout.SOUTH)
     }
 
-data class NavigationItem(
-    val text: String,
-    val icon: ImageVector,
-    val content: @Composable RowScope.(DltTarget) -> Unit,
-)
-
-val navigationItems = mutableListOf(
-    NavigationItem(
-        text = "Table",
-        icon = Icons.Outlined.GridView,
-    ) { dltTarget ->
-        val table = DltDataTable(dltTarget)
-        SwingPanel(
-            modifier = Modifier.fillMaxSize(),
-            factory = {
-                val panel = JPanel(BorderLayout())
-                panel.add(JScrollPane(table, JScrollPane.VERTICAL_SCROLLBAR_ALWAYS, JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED), BorderLayout.CENTER)
-                panel
-            },
-            update = {
-                table.setDltTarget(dltTarget)
+    private fun openFile(file: File) {
+        SwingUtilities.invokeLater {
+            progressBar.string = "Loading file"
+            progressBar.isStringPainted = true
+        }
+        DltManager.openFile(
+            dltFile = file,
+            waitForCompleteDatabase = false,
+            force = false,
+            onFinished = { dltTarget ->
+                SwingUtilities.invokeLater {
+                    logger.info("Loading finished")
+                    progressBar.string = "File: ${dltTarget.dltFile?.absolutePath}"
+                    progressBar.isStringPainted = true
+                    progressBar.isVisible = false
+                }
+                setDltTarget(dltTarget)
             }
-        )
-    },
-    NavigationItem(
-        text = "Side-by-Side",
-        icon = Icons.Outlined.ViewWeek,
-    ) { dltTarget ->
-        SideBySide(dltTarget)
-    }
-)
-
-@Composable
-@Preview
-fun DltAnalyzerMain(dltTarget: DltTarget?, dltPercentLoaded: Float) {
-    var selectedItem by remember { mutableStateOf(0) }
-
-    MaterialTheme {
-        Scaffold { padding ->
-            Row(Modifier.padding(padding).fillMaxWidth()) {
-                if (dltTarget == null) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                        Text("Select file to open")
+        ) { progress ->
+            if (progress.progress != null) {
+                SwingUtilities.invokeLater {
+                    if (progress.progress != null) {
+                        progressBar.isIndeterminate = false
+                        progressBar.value = (progress.progress!! * 100f).roundToInt()
+                    } else {
+                        progressBar.isIndeterminate = true
                     }
-                } else if (!dltTarget.isLoaded) {
-                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().padding(10.dp)) {
-                        LinearProgressIndicator(progress = { dltPercentLoaded }, modifier = Modifier.fillMaxWidth().height(10.dp))
-                    }
-                } else {
-                    NavigationRail(modifier = Modifier.width(100.dp)) {
-                        navigationItems.forEachIndexed { index, item ->
-                            NavigationRailItem(
-                                label = { Text(item.text) },
-                                modifier = Modifier.fillMaxWidth(),
-                                icon = {
-                                    Icon(imageVector = item.icon, contentDescription = "")
-                                },
-                                selected = selectedItem == index,
-                                onClick = { selectedItem = index },
-                            )
-                        }
-//                        Spacer(modifier = Modifier.weight(1f))
-//                        NavigationRailItem(
-//                            label = { Text("Settings") },
-//                            icon = { Icon(imageVector = Icons.Outlined.Settings, contentDescription = "") },
-//                            selected = false,
-//                            onClick = { selectedItem = -1 },
-//                        )
-                    }
-
-                    when (selectedItem) {
-                        -1 -> Text("Settings")
-                        else -> navigationItems[selectedItem].content.invoke(this, dltTarget)
-                    }
+                    progressBar.string = progress.progressText
+                }
+            } else if (!progressBar.isIndeterminate) {
+                SwingUtilities.invokeLater {
+                    progressBar.string = progress.progressText
+                    progressBar.isIndeterminate = true
                 }
             }
         }
+    }
 
+    private fun setDltTarget(dltTarget: DltTarget) {
+        logger.info("Setting dlt target")
+        mainTabbedPane.setDltTarget(dltTarget)
+    }
+
+    fun showApp(args: Array<String>) {
+        val autoOpenFile = if (args.size == 1) args[0] else System.getenv("DLT_FILE_AUTOOPEN")
+        if (autoOpenFile != null) {
+            val file = File(autoOpenFile)
+            if (file.exists()) {
+                openFile(file)
+            } else {
+                logger.info("File '${file.absolutePath} does not exist'")
+            }
+        }
+        SwingUtilities.invokeLater {
+            frame.isVisible = true
+        }
     }
 }

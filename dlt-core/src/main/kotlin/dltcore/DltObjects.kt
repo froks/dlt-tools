@@ -25,6 +25,7 @@ data class DltReadProgress(
     var filePosition: Long?,
     var fileSize: Long?,
     var progress: Float?,
+    var progressText: String?
 )
 
 class DltMessageParser {
@@ -32,14 +33,14 @@ class DltMessageParser {
     companion object {
         fun parseWithCallback(buffer: ByteBuffer, totalSize: Long?, callback: (DltMessage, DltReadProgress) -> Unit) {
             buffer.order(ByteOrder.BIG_ENDIAN)
-            val progress = DltReadProgress(0, null, totalSize, null)
+            val progress = DltReadProgress(0, null, totalSize, null, "Parsing file")
             while (buffer.hasRemaining()) {
-                val magic = buffer.int
-                val version = DltStorageVersion.getByMagic(magic)
                 val message = try {
+                    val magic = buffer.int
+                    val version = DltStorageVersion.getByMagic(magic)
                     parseDltMessage(buffer, version)
                 } catch (e: RuntimeException) {
-                    throw RuntimeException("Error while parsing message at $progress", e)
+                    throw RuntimeException("Error while parsing message at ${progress.filePosition}: ${e.message}", e)
                 }
                 progress.index++
                 progress.filePosition = buffer.position().toLong()
@@ -284,6 +285,9 @@ enum class MessageTypeInfo(val type: MessageType, val value: Int) {
                 MessageType.DLT_TYPE_CONTROL.value -> entries[DLT_CONTROL_REQUEST.ordinal + mtin - 1]
                 else -> throw IllegalArgumentException("Unknown mstp $mstp")
             }
+
+        fun getByShort(short: String) =
+            entries.firstOrNull { it.shortText == short }
     }
 
 }

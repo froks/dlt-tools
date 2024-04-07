@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory
 import java.io.File
 import java.sql.DriverManager
 import java.util.*
-import java.util.concurrent.atomic.AtomicInteger
 import javax.sql.DataSource
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
@@ -19,7 +18,7 @@ object DltManager {
 
     private fun isExistingFileComplete(dbFile: File, dltFile: File): Boolean {
         DriverManager.getConnection("jdbc:sqlite:file:${dbFile.absolutePath}").use { connection ->
-            val expected = DltTableDataAccess.getEntryCount(connection)
+            val expected = DltTableDataAccess.getEntryCount(connection, null)
             var count: Long = 0
             DltMessageParser.parseFileWithCallback(dltFile.toPath()) { _, _ ->
                 count++
@@ -34,9 +33,9 @@ object DltManager {
         dltFile: File,
         waitForCompleteDatabase: Boolean = true,
         force: Boolean = false,
-        onFinished: () -> Unit = {},
+        onFinished: (DltTarget) -> Unit = {},
         callback: (DltReadProgress) -> Unit = { }
-    ): DltTarget {
+    ) {
         logger.info("Opening ${dltFile.absolutePath}")
 
         val name = dltFile.nameWithoutExtension
@@ -72,25 +71,26 @@ object DltManager {
 
         if (reuseExisting) {
             dltTarget.isLoaded = true
-            onFinished()
-            return dltTarget
+            onFinished(dltTarget)
+            return
         }
 
         val t = thread(isDaemon = true) {
             var lastPercent = 0
-            val id = AtomicInteger(1)
             val dataAccess = DltTableDataAccess(dataSource)
 
+            logger.info("Parsing and inserting into database ${dltFile.absolutePath}")
             dataAccess.createInserter().use { inserter ->
                 DltMessageParser.parseFileWithCallback(dltFile.toPath()) { msg, progress ->
                     inserter.insertMsg(msg as DltMessageV1)
-                    if (id.get() % 20_000 == 0) {
+                    if (inserter.index % 20_000 == 0) {
                         inserter.executeBatch()
                         inserter.commit()
                     }
 
                     val percent = ((progress.progress ?: 0.0f) * 100).roundToInt()
                     if (percent > lastPercent) {
+                        progress.progressText = "Loading file ${dltFile.absolutePath}"
                         callback.invoke(progress)
                         lastPercent = percent
                     }
@@ -100,16 +100,18 @@ object DltManager {
                 inserter.commit()
             }
 
-            dltTarget.isLoaded = true
-            onFinished()
-
+            val progress = DltReadProgress(-1, null, null, null, "Creating indexes")
+            callback.invoke(progress)
+            logger.info("Creating indexes")
             dataAccess.createIndexes()
+
+            dltTarget.isLoaded = true
+            onFinished(dltTarget)
         }
 
         if (waitForCompleteDatabase) {
             t.join()
         }
-        return dltTarget
     }
 }
 

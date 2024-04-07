@@ -105,10 +105,11 @@ class DltTableDataAccess(private val dataSource: DataSource) {
         return list
     }
 
-    fun getEntryCount(): Long {
+    fun getEntryCount(sqlClause: String?): Long {
         try {
+            logger.info("Retrieving count $sqlClause")
             dataSource.connection.use { connection ->
-                return Companion.getEntryCount(connection)
+                return Companion.getEntryCount(connection, sqlClause)
             }
         } catch (e: Exception) {
             return -1
@@ -116,8 +117,9 @@ class DltTableDataAccess(private val dataSource: DataSource) {
     }
 
     companion object {
-        fun getEntryCount(connection: Connection): Long {
-            connection.prepareStatement("SELECT COUNT(id) FROM DLT_LOG").use { stmt ->
+        fun getEntryCount(connection: Connection, sqlWhere: String?): Long {
+            val where = sqlWhere?.ifBlank { "1 = 1" } ?: "1 = 1"
+            connection.prepareStatement("SELECT COUNT(id) FROM DLT_LOG WHERE $where").use { stmt ->
                 stmt.executeQuery().use { rs ->
                     if (rs.next()) {
                         return rs.getLong(1)
@@ -132,7 +134,7 @@ class DltTableDataAccess(private val dataSource: DataSource) {
 
 
 class DltInserter(private val connection: Connection, private val stmt: PreparedStatement) : AutoCloseable {
-    private val idGenerator = AtomicInteger(1)
+    private val idGenerator = AtomicInteger(0)
 
     fun insertMsg(m1: DltMessageV1) {
         stmt.setInt(1, idGenerator.getAndIncrement())
@@ -153,6 +155,9 @@ class DltInserter(private val connection: Connection, private val stmt: Prepared
 
     fun commit() =
         connection.commit()
+
+    val index: Int
+        get() = idGenerator.get()
 
 
     override fun close() {

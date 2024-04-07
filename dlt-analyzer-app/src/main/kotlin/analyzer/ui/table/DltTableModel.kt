@@ -1,14 +1,13 @@
 package analyzer.ui.table
 
-import analyzer.DefaultDateTimeFormatter
+import analyzer.filter.DltMessageFilter
+import analyzer.filter.sqlWhere
 import analyzer.formatDefault
 import db.DltMessageDto
 import db.DltTableDataAccess
 import db.DltTarget
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import javax.swing.event.TableModelListener
-import javax.swing.table.TableModel
+import java.awt.Color
+import javax.swing.table.AbstractTableModel
 import kotlin.reflect.KClass
 
 enum class TableColumns(val title: String, val columnClass: KClass<*>, val preferredWidth: Int) {
@@ -20,7 +19,17 @@ enum class TableColumns(val title: String, val columnClass: KClass<*>, val prefe
 }
 
 
-class DltTableModel(private var dltTarget: DltTarget) : TableModel {
+class DltTableModel(private var dltTarget: DltTarget, private var internalFilterList: List<DltMessageFilter>?) : AbstractTableModel() {
+    var filterList: List<DltMessageFilter>?
+        get() = internalFilterList
+        set(v) {
+            internalFilterList = v
+            rowCount = tableAccess.getEntryCount(v.sqlWhere()).toInt()
+            cachedEntries = emptyList()
+            cachedEntriesColor = mutableMapOf()
+            fireTableDataChanged()
+        }
+
     private val CACHED_ENTRIES_COUNT = 1_000
 
     private var tableAccess: DltTableDataAccess
@@ -28,16 +37,18 @@ class DltTableModel(private var dltTarget: DltTarget) : TableModel {
 
     private var listOffset = 0
     private var cachedEntries: List<DltMessageDto> = emptyList()
+    private var cachedEntriesColor: MutableMap<Int, Color> = mutableMapOf()
 
     init {
         tableAccess = DltTableDataAccess(dltTarget.dataSource)
-        rowCount = tableAccess.getEntryCount().toInt()
+        rowCount = tableAccess.getEntryCount(filterList.sqlWhere()).toInt()
     }
 
     fun setDltTarget(dltTarget: DltTarget) {
         if (this.dltTarget != dltTarget) {
             this.dltTarget = dltTarget
             this.tableAccess = DltTableDataAccess(dltTarget.dataSource)
+            fireTableDataChanged()
         }
     }
 
@@ -56,16 +67,21 @@ class DltTableModel(private var dltTarget: DltTarget) : TableModel {
     override fun isCellEditable(rowIndex: Int, columnIndex: Int): Boolean =
         false
 
-    override fun getValueAt(rowIndex: Int, columnIndex: Int): Any {
+    private fun getRow(rowIndex: Int): DltMessageDto {
         val isAvailable = rowIndex in listOffset until listOffset + cachedEntries.size
         if (!isAvailable) {
             val offset = (rowIndex - (CACHED_ENTRIES_COUNT / 2)).coerceAtLeast(0)
 
-            cachedEntries = tableAccess.readData("1=1 ORDER BY id LIMIT $CACHED_ENTRIES_COUNT OFFSET $offset")
+            cachedEntries =
+                tableAccess.readData("${filterList.sqlWhere()} ORDER BY id LIMIT $CACHED_ENTRIES_COUNT OFFSET $offset")
             listOffset = offset
         }
 
-        val entry = cachedEntries[rowIndex - listOffset]
+        return cachedEntries[rowIndex - listOffset]
+    }
+
+    override fun getValueAt(rowIndex: Int, columnIndex: Int): Any {
+        val entry = getRow(rowIndex)
 
         return when (TableColumns.entries[columnIndex]) {
             TableColumns.ID -> entry.id
@@ -79,9 +95,20 @@ class DltTableModel(private var dltTarget: DltTarget) : TableModel {
     override fun setValueAt(aValue: Any?, rowIndex: Int, columnIndex: Int) {
     }
 
-    override fun addTableModelListener(l: TableModelListener) {
-    }
+    fun getRowColor(rowIndex: Int): Color? {
+        if (cachedEntriesColor.containsKey(rowIndex)) {
+            return cachedEntriesColor[rowIndex]
+        }
 
-    override fun removeTableModelListener(l: TableModelListener) {
+        val color = cachedEntriesColor[rowIndex]
+        if (color == null) {
+            val entry = getRow(rowIndex)
+            val match = filterList?.firstOrNull { it.active && it.markerActive && it.textColor != null && it.matches(entry) }
+            if (match != null) {
+                cachedEntriesColor[rowIndex] = match.textColor!!
+                return match.textColor!!
+            }
+        }
+        return null;
     }
 }
