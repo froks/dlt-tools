@@ -1,7 +1,6 @@
 package analyzer
 
-import analyzer.ui.dltAnalyzerMainWindow
-import androidx.compose.ui.window.application
+import analyzer.ui.DltAnalyzerWindow
 import org.oxbow.swingbits.dialog.task.TaskDialogs
 
 class DltAnalyzerApp {
@@ -11,9 +10,8 @@ class DltAnalyzerApp {
             Thread.setDefaultUncaughtExceptionHandler { _, e ->
                 TaskDialogs.build().showException(e)
             }
-            application {
-                dltAnalyzerMainWindow(args)
-            }
+
+            DltAnalyzerWindow().showApp(args)
         }
     }
 }
