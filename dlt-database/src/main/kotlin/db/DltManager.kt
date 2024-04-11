@@ -4,7 +4,7 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import dltcore.DltMessageParser
 import dltcore.DltMessageV1
-import dltcore.DltReadProgress
+import dltcore.DltReadStatus
 import org.slf4j.LoggerFactory
 import java.io.File
 import java.sql.DriverManager
@@ -19,10 +19,7 @@ object DltManager {
     private fun isExistingFileComplete(dbFile: File, dltFile: File): Boolean {
         DriverManager.getConnection("jdbc:sqlite:file:${dbFile.absolutePath}").use { connection ->
             val expected = DltTableDataAccess.getEntryCount(connection, null)
-            var count: Long = 0
-            DltMessageParser.parseFileWithCallback(dltFile.toPath()) { _, _ ->
-                count++
-            }
+            val count: Long = DltMessageParser.parseFileWithCallback(dltFile.toPath()).count()
             logger.info("Existing database '${dbFile.name}' has $count entries, expected $expected")
             return expected == count
         }
@@ -34,7 +31,7 @@ object DltManager {
         waitForCompleteDatabase: Boolean = true,
         force: Boolean = false,
         onFinished: (DltTarget) -> Unit = {},
-        callback: (DltReadProgress) -> Unit = { }
+        callback: (DltReadStatus) -> Unit = { }
     ) {
         logger.info("Opening ${dltFile.absolutePath}")
 
@@ -81,8 +78,8 @@ object DltManager {
 
             logger.info("Parsing and inserting into database ${dltFile.absolutePath}")
             dataAccess.createInserter().use { inserter ->
-                DltMessageParser.parseFileWithCallback(dltFile.toPath()) { msg, progress ->
-                    inserter.insertMsg(msg as DltMessageV1)
+                DltMessageParser.parseFileWithCallback(dltFile.toPath()).forEach { progress ->
+                    inserter.insertMsg(progress.dltMessage as DltMessageV1)
                     if (inserter.index % 20_000 == 0) {
                         inserter.executeBatch()
                         inserter.commit()
@@ -90,8 +87,7 @@ object DltManager {
 
                     val percent = ((progress.progress ?: 0.0f) * 100).roundToInt()
                     if (percent > lastPercent) {
-                        progress.progressText = "Loading file ${dltFile.absolutePath}"
-                        callback.invoke(progress)
+                        callback.invoke(progress.copy(progressText = "Loading file ${dltFile.absolutePath}"))
                         lastPercent = percent
                     }
 
@@ -100,8 +96,7 @@ object DltManager {
                 inserter.commit()
             }
 
-            val progress = DltReadProgress(-1, null, null, null, "Creating indexes")
-            callback.invoke(progress)
+            callback.invoke(DltReadStatus(-1, null, null, null, "Creating indexes", 0, 0, null))
             logger.info("Creating indexes")
             dataAccess.createIndexes()
 

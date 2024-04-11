@@ -236,7 +236,7 @@ class DltFilterApp : JFrame("dlt-filter") {
             RandomAccessFile(destinationFile, "rw").use { randomAccessFile ->
 
                 val bb = ByteBuffer.allocate(100_000)
-                DltMessageParser.parseFileWithCallback(file.toPath()) { message, status ->
+                DltMessageParser.parseFileWithCallback(file.toPath()).forEach { status ->
                     if (status.filePosition != null && status.fileSize != null) {
                         percent = (status.filePosition!!.toFloat() / status.fileSize!!.toFloat()) * 100
                     } else if (percent == 0f) {
@@ -255,16 +255,15 @@ class DltFilterApp : JFrame("dlt-filter") {
                     }
 
 
-                    if (message is DltMessageV1) {
-                        if (!appIdsFiltered.contains(message.extendedHeader?.apid)) {
-                            return@parseFileWithCallback
-                        }
+                    val msg = status.dltMessage as? DltMessageV1
+                    if (msg == null || !appIdsFiltered.contains(msg.extendedHeader?.apid)) {
+                        return@forEach
                     }
-
-                    message.write(bb)
+                    msg.write(bb)
                     bb.flip()
                     randomAccessFile.write(bb.array(), bb.position(), bb.limit())
                     bb.clear()
+
                 }
             }
 

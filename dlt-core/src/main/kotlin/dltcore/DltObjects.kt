@@ -16,65 +16,7 @@ enum class DltStorageVersion(val magicValue: Int) {
     companion object {
         fun getByMagic(value: Int) =
             DltStorageVersion.entries.firstOrNull { it.magicValue == value }
-                ?: throw IllegalArgumentException("Unknown magic $value")
-    }
-}
-
-data class DltReadProgress(
-    var index: Long,
-    var filePosition: Long?,
-    var fileSize: Long?,
-    var progress: Float?,
-    var progressText: String?
-)
-
-class DltMessageParser {
-
-    companion object {
-        fun parseWithCallback(buffer: ByteBuffer, totalSize: Long?, callback: (DltMessage, DltReadProgress) -> Unit) {
-            buffer.order(ByteOrder.BIG_ENDIAN)
-            val progress = DltReadProgress(0, null, totalSize, null, "Parsing file")
-            while (buffer.hasRemaining()) {
-                val message = try {
-                    val magic = buffer.int
-                    val version = DltStorageVersion.getByMagic(magic)
-                    parseDltMessage(buffer, version)
-                } catch (e: RuntimeException) {
-                    throw RuntimeException("Error while parsing message at ${progress.filePosition}: ${e.message}", e)
-                }
-                progress.index++
-                progress.filePosition = buffer.position().toLong()
-                if (totalSize != null) {
-                    progress.progress = progress.filePosition!!.toFloat() / totalSize.toFloat()
-                } else {
-                    progress.progress = null
-                }
-                callback.invoke(message, progress)
-            }
-        }
-
-        fun parseFileWithCallback(path: Path, callback: (DltMessage, DltReadProgress) -> Unit) {
-            FileChannel.open(path).use { fileChannel ->
-                val buffer = fileChannel.map(FileChannel.MapMode.READ_ONLY, 0, fileChannel.size())
-                parseWithCallback(buffer, fileChannel.size(), callback)
-            }
-            System.gc() // JDK-4715154
-        }
-
-        fun parseFileAsObjects(path: Path): List<DltMessage> {
-            val messages = mutableListOf<DltMessage>()
-            parseFileWithCallback(path) { message, _ ->
-                messages.add(message)
-            }
-            return messages
-        }
-
-        private fun parseDltMessage(buffer: ByteBuffer, version: DltStorageVersion): DltMessage =
-            when (version) {
-                DltStorageVersion.V1 -> DltMessageV1.fromByteBuffer(buffer)
-                DltStorageVersion.V2 -> throw UnsupportedOperationException("not supported yet")
-            }
-
+                ?: throw IllegalArgumentException("Unknown dlt-header magic ${value.toString(16)}")
     }
 }
 

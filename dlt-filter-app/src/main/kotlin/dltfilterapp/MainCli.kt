@@ -19,14 +19,15 @@ fun main(args: Array<String>) {
     val appIds = args[1].split(',', ';').toSet()
     val appIdsInts = appIds.map { it.asIntValue() }
     var counter = 0
-    DltMessageParser.parseFileWithCallback(path) { msg, progress ->
+    DltMessageParser.parseFileWithCallback(path).forEach { status ->
         counter++
+        val msg = status.dltMessage
         if (msg is DltMessageV1) {
             if (!appIdsInts.contains(msg.extendedHeader?.apid)) {
-                return@parseFileWithCallback
+                return@forEach
             }
             if (msg.extendedHeader?.messageType != MessageType.DLT_TYPE_LOG) {
-                return@parseFileWithCallback
+                return@forEach
             }
             val payload = msg.payload.logMessage.removeSuffix("\n")
             println("${msg.storageHeader.utcTimestamp} ${msg.extendedHeader!!.apIdText} ${msg.extendedHeader!!.ctIdText} ${msg.messageTypeInfo} $payload")
