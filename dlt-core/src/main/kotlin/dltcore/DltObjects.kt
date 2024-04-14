@@ -2,9 +2,7 @@ package dltcore
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.nio.channels.FileChannel
 import java.nio.charset.Charset
-import java.nio.file.Path
 import java.time.Instant
 import kotlin.experimental.and
 import kotlin.time.Duration.Companion.microseconds
@@ -448,6 +446,15 @@ class DltPayloadArgumentString(val data: String, val charset: Charset, variableN
     }
 }
 
+@OptIn(ExperimentalStdlibApi::class)
+private val DltRawHexFormat = HexFormat {
+    upperCase = false
+    bytes {
+        byteSeparator = " "
+    }
+}
+
+
 class DltPayloadArgumentRawData(val data: String, variableName: String?) :
     DltPayloadArgument(DltPayloadArgumentType.STRG, variableName) {
     override val dataSize: Int
@@ -457,6 +464,7 @@ class DltPayloadArgumentRawData(val data: String, variableName: String?) :
         data
 
     companion object {
+        @OptIn(ExperimentalStdlibApi::class)
         fun fromByteBuffer(typeInfo: Int, bb: ByteBuffer, byteOrder: ByteOrder): DltPayloadArgumentRawData {
             bb.order(byteOrder)
 
@@ -464,9 +472,8 @@ class DltPayloadArgumentRawData(val data: String, variableName: String?) :
             val len = bb.short.toUShort().toInt()
             val data = ByteArray(len)
             bb.get(data)
-            val charset = Charsets.US_ASCII
 
-            val s = String(data, 0, len, charset)
+            val s = data.toHexString(DltRawHexFormat)
             return DltPayloadArgumentRawData(s, variableName)
         }
     }
@@ -534,4 +541,3 @@ class DltPayloadArgumentNumber(
         }
     }
 }
-

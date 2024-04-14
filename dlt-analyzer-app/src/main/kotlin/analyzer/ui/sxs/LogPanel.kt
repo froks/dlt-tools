@@ -3,9 +3,11 @@ package analyzer.ui.sxs
 import analyzer.asIcon
 import analyzer.formatDefault
 import analyzer.plugin.DltTargetAware
+import db.DltLog
 import db.DltTableDataAccess
 import db.DltTarget
 import jiconfont.icons.google_material_design_icons.GoogleMaterialDesignIcons
+import org.ktorm.dsl.inList
 import org.slf4j.LoggerFactory
 import java.awt.BorderLayout
 import javax.swing.*
@@ -52,11 +54,7 @@ class LogPanel : JPanel(BorderLayout()), DltTargetAware {
                 textArea.text = "Loading data"
                 val dao = DltTableDataAccess(dltTarget!!.dataSource)
                 val appIds = appId.split(',', ' ', ';').filter { it.isNotBlank() }
-                val data = dao.readDataPrepared("app_id IN (${appIds.joinToString(",") { "?" }}) ORDER BY id") {
-                    appIds.forEachIndexed { index, s ->
-                        it.setString(index + 1, s)
-                    }
-                }
+                val data = dao.readData(listOf(DltLog.appId.inList(appIds)))
                 val text = data.joinToString("\n") {
                     if (appIds.size > 1) {
                         "[${it.timestamp.formatDefault()} ${it.appId.padEnd(4, ' ')} ${it.messageType.shortText.padEnd(5, ' ')}] ${it.message.trimEnd()}"
