@@ -13,9 +13,9 @@ import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Dimension
 import java.awt.FlowLayout
-import java.awt.event.KeyEvent
-import java.awt.event.KeyListener
 import javax.swing.*
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
 
 class FilterEditDialog {
     private var active: JCheckBox
@@ -23,8 +23,12 @@ class FilterEditDialog {
     private var positive: JRadioButton
     private var negative: JRadioButton
     private var marker: JRadioButton
+    private var ecuIdActive: JCheckBox
+    private var ecuId: JTextField
     private var appIdActive: JCheckBox
     private var appId: JTextField
+    private var contextIdActive: JCheckBox
+    private var contextId: JTextField
     private var loglevelActive: JCheckBox
     private var loglevelMin: JComboBox<String>
     private var loglevelMax: JComboBox<String>
@@ -63,8 +67,15 @@ class FilterEditDialog {
         marker = createRadioButton("Marker", type).also { btn ->
             btn.addActionListener { updateColorActiveEnabled() }
         }
+
+        ecuIdActive = createCheckBox("ECU Id")
+        ecuId = createTextField(ecuIdActive)
+
         appIdActive = createCheckBox("App Id")
         appId = createTextField(appIdActive)
+
+        contextIdActive = createCheckBox("Context Id")
+        contextId = createTextField(contextIdActive)
 
         loglevelActive = createCheckBox("Level")
         val loglevel = MessageTypeInfo.entries.filter { it.type == MessageType.DLT_TYPE_LOG }.map { it.shortText }
@@ -94,22 +105,24 @@ class FilterEditDialog {
         message = createTextField(messageActive).also { tf ->
             val tb = JToolBar()
             tb.add(messageIsCaseSensitive)
-            tb.add(messageIsRegex)
+//            tb.add(messageIsRegex)
             tf.putClientProperty(FlatClientProperties.TEXT_FIELD_TRAILING_COMPONENT, tb)
         }
     }
 
     private fun createTextField(linkedCheckBox: JCheckBox): JTextField =
         JTextField().also { tf ->
-            tf.addKeyListener(object : KeyListener {
-                override fun keyTyped(e: KeyEvent) {
-                    linkedCheckBox.isSelected = tf.text.isNotEmpty()
+            tf.document.addDocumentListener(object : DocumentListener {
+                override fun insertUpdate(e: DocumentEvent) {
+                    linkedCheckBox.isSelected = e.document.length > 0
                 }
 
-                override fun keyPressed(e: KeyEvent) {
+                override fun removeUpdate(e: DocumentEvent) {
+                    linkedCheckBox.isSelected = e.document.length > 0
                 }
 
-                override fun keyReleased(e: KeyEvent) {
+                override fun changedUpdate(e: DocumentEvent) {
+                    linkedCheckBox.isSelected = e.document.length > 0
                 }
             })
         }
@@ -133,10 +146,12 @@ class FilterEditDialog {
             active = active.isSelected,
             filterName = name.text.trim(),
             action = action,
+            ecuIdActive = ecuIdActive.isSelected,
+            ecuId = ecuId.text.trim(),
             appIdActive = appIdActive.isSelected,
             appId = appId.text.trim(),
-            contextIdActive = false,
-            contextId = null,
+            contextIdActive = contextIdActive.isSelected,
+            contextId = contextId.text.trim(),
             timestampActive = false,
             timestampStart = null,
             timestampEnd = null,
@@ -153,38 +168,26 @@ class FilterEditDialog {
         )
     }
 
+    private fun checkTextField(checkBox: JCheckBox?, textField: JTextField): Boolean {
+        if (checkBox == null || checkBox.isSelected) {
+            if (textField.text.isBlank()) {
+                textField.putClientProperty(FlatClientProperties.OUTLINE, FlatClientProperties.OUTLINE_ERROR)
+                return false
+            } else {
+                textField.putClientProperty(FlatClientProperties.OUTLINE, null)
+            }
+        } else {
+            textField.putClientProperty(FlatClientProperties.OUTLINE, null)
+        }
+        return true
+    }
+
     private fun check(): Boolean {
-        var isValid = true
-
-
-        if (name.text.isBlank()) {
-            isValid = false
-            name.putClientProperty(FlatClientProperties.OUTLINE, FlatClientProperties.OUTLINE_ERROR)
-        } else {
-            name.putClientProperty(FlatClientProperties.OUTLINE, null)
-        }
-
-        if (appIdActive.isSelected) {
-            if (appId.text.isBlank()) {
-                isValid = false
-                appId.putClientProperty(FlatClientProperties.OUTLINE, FlatClientProperties.OUTLINE_ERROR)
-            } else {
-                appId.putClientProperty(FlatClientProperties.OUTLINE, null)
-            }
-        } else {
-            appId.putClientProperty(FlatClientProperties.OUTLINE, null)
-        }
-
-        if (messageActive.isSelected) {
-            if (message.text.isEmpty()) {
-                isValid = false
-                message.putClientProperty(FlatClientProperties.OUTLINE, FlatClientProperties.OUTLINE_ERROR)
-            } else {
-                message.putClientProperty(FlatClientProperties.OUTLINE, null)
-            }
-        } else {
-            message.putClientProperty(FlatClientProperties.OUTLINE, null)
-        }
+        val isValid = checkTextField(null, name) &&
+                checkTextField(ecuIdActive, ecuId) &&
+                checkTextField(appIdActive, appId) &&
+                checkTextField(contextIdActive, contextId) &&
+                checkTextField(messageActive, message)
 
         return isValid
     }
@@ -206,7 +209,9 @@ class FilterEditDialog {
                 isOk = true
                 dialog.isVisible = false
             }
+            dialog.rootPane.defaultButton = btn
         }
+
         val cancelButton = JButton("Cancel").also { btn ->
             btn.addActionListener {
                 isOk = false
@@ -224,17 +229,19 @@ class FilterEditDialog {
         val panel = FormBuilder.create()
             .padding("5dlu,5dlu,5dlu,5dlu")
             .columns("left:pref, 2dlu, pref:grow")
-            .rows("pref, pref, pref, pref, 2dlu, pref, 2dlu, pref, pref, pref, 10dlu, pref")
+            .rows("pref, pref, pref, pref, 2dlu, pref, 2dlu, pref, pref, pref, pref, pref, 10dlu, pref")
             .addLabel("Active").xy(1, 1).add(active).xy(3, 1)
             .addLabel("Name").xy(1, 2).add(name).xy(3, 2)
             .addLabel("Type").xy(1, 3).addBar(positive, negative, marker).xy(3, 3)
             .add(colorActive).xy(1, 4).add(colorButtonPanel).xy(3, 4)
             .addSeparator(null).xyw(1, 6, 3)
             .add(loglevelActive).xy(1, 8).add(loglevelPanel).xy(3, 8)
-            .add(appIdActive).xy(1, 9).add(appId).xy(3, 9)
-            .add(messageActive).xy(1, 10).add(message).xy(3, 10)
-            .addSeparator(null).xy(1, 11)
-            .addBar(okButton, cancelButton).xyw(1, 12, 3, CellConstraints.RIGHT, CellConstraints.DEFAULT)
+            .add(ecuIdActive).xy(1, 9).add(ecuId).xy(3, 9)
+            .add(appIdActive).xy(1, 10).add(appId).xy(3, 10)
+            .add(contextIdActive).xy(1, 11).add(contextId).xy(3, 11)
+            .add(messageActive).xy(1, 12).add(message).xy(3, 12)
+            .addSeparator(null).xy(1, 13)
+            .addBar(okButton, cancelButton).xyw(1, 14, 3, CellConstraints.RIGHT, CellConstraints.DEFAULT)
             .build()
 
         dialog.add(panel, BorderLayout.NORTH)
@@ -275,8 +282,14 @@ class FilterEditDialog {
         loglevelMin.selectedIndex = loglevelMin.findItemIndex(filter?.messageTypeMin?.shortText)
         loglevelMax.selectedIndex = loglevelMax.findItemIndex(filter?.messageTypeMax?.shortText)
 
+        ecuIdActive.isSelected = filter?.ecuIdActive ?: false
+        ecuId.text = filter?.ecuId
+
         appIdActive.isSelected = filter?.appIdActive ?: false
         appId.text = filter?.appId
+
+        contextIdActive.isSelected = filter?.contextIdActive ?: false
+        contextId.text = filter?.contextId
 
         colorActive.isSelected = filter?.markerActive ?: false
         textColor = filter?.textColor ?: Color.white

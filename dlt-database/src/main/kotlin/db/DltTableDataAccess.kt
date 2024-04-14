@@ -3,7 +3,7 @@ package db
 import dltcore.DltMessageV1
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
-import org.ktorm.schema.ColumnDeclaring
+import org.ktorm.schema.*
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.PreparedStatement
@@ -74,32 +74,27 @@ class DltTableDataAccess(private val dataSource: DataSource) {
     ): List<DltMessageDto> {
         val list = mutableListOf<DltMessageDto>()
         val duration = measureTimeMillis {
-            var query = database
+            database
                 .from(DltLog)
                 .select()
                 .whereWithOrConditions { list -> list.addAll(sqlClausesOr) }
                 .orderBy(DltLog.id.asc())
-
-            if (offset != null) {
-                query = query.offset(offset)
-            }
-            if (limit != null) {
-                query = query.limit(limit)
-            }
-            logger.info("Executing ${query.sql}")
-            query.mapTo(list) { row -> DltLog.createEntity(row) }
+                .limit(offset, limit)
+                .mapTo(list) { row -> DltLog.createEntity(row) }
         }
-        logger.debug("Reading data for '$sqlClausesOr' took $duration ms")
+
+        logger.debug("Reading data for took $duration ms")
         return list
     }
 
     fun getEntryCount(sqlClausesOr: List<ColumnDeclaring<Boolean>>): Long {
         try {
-            logger.info("Retrieving count $sqlClausesOr")
             val sql = database
                 .from(DltLog)
                 .select(count(DltLog.id))
                 .whereWithOrConditions { list -> list.addAll(sqlClausesOr) }
+
+            logger.info("Retrieving count ${sql.sql}")
 
             return database.executeQuery(sql.expression).use {
                 it.first()
@@ -111,7 +106,6 @@ class DltTableDataAccess(private val dataSource: DataSource) {
         }
     }
 }
-
 
 class DltInserter(private val connection: Connection, private val stmt: PreparedStatement) : AutoCloseable {
     private val idGenerator = AtomicInteger(0)
