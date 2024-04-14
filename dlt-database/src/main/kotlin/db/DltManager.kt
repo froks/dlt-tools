@@ -7,22 +7,20 @@ import dltcore.DltMessageV1
 import dltcore.DltReadStatus
 import org.slf4j.LoggerFactory
 import java.io.File
-import java.sql.DriverManager
 import java.util.*
 import javax.sql.DataSource
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
+import kotlin.system.measureTimeMillis
 
 object DltManager {
     private val logger = LoggerFactory.getLogger(DltManager::class.java)
 
-    private fun isExistingFileComplete(dbFile: File, dltFile: File): Boolean {
-        DriverManager.getConnection("jdbc:sqlite:file:${dbFile.absolutePath}").use { connection ->
-            val expected = DltTableDataAccess.getEntryCount(connection, null)
-            val count: Long = DltMessageParser.parseFileWithCallback(dltFile.toPath()).count()
-            logger.info("Existing database '${dbFile.name}' has $count entries, expected $expected")
-            return expected == count
-        }
+    private fun isExistingFileComplete(dbFile: File, dltFile: File, dataAccess: DltTableDataAccess): Boolean {
+        val expected = dataAccess.getEntryCount(emptyList())
+        val count: Long = DltMessageParser.parseFileWithCallback(dltFile.toPath()).count()
+        logger.info("Existing database '${dbFile.name}' has $count entries, expected $expected")
+        return expected == count
 
     }
 
@@ -44,24 +42,22 @@ object DltManager {
             }
         }
 
-        val reuseExisting = dbFile.exists() && isExistingFileComplete(dbFile, dltFile)
-
-        if (reuseExisting) {
-            logger.info("Reusing existing database file ${dbFile.absolutePath}")
-        }
-
         val config = HikariConfig()
         config.jdbcUrl = "jdbc:sqlite:file:${dbFile.absolutePath}"
         config.isAutoCommit = false
         config.transactionIsolation = "TRANSACTION_READ_UNCOMMITTED"
         val dataSource = HikariDataSource(config)
+        val dataAccess = DltTableDataAccess(dataSource)
+
+        val reuseExisting = dbFile.exists() && isExistingFileComplete(dbFile, dltFile, dataAccess)
+
+        if (reuseExisting) {
+            logger.info("Reusing existing database file ${dbFile.absolutePath}")
+        }
+
 
         if (!reuseExisting) {
-            dataSource.connection.use { connection ->
-                val dataAccess = DltTableDataAccess(dataSource)
-                dataAccess.initialize()
-                connection.commit()
-            }
+            dataAccess.initialize()
         }
 
         val dltTarget = DltTarget(UUID.randomUUID(), name, dltFile, dataSource, reuseExisting)
@@ -74,31 +70,39 @@ object DltManager {
 
         val t = thread(isDaemon = true) {
             var lastPercent = 0
-            val dataAccess = DltTableDataAccess(dataSource)
 
             logger.info("Parsing and inserting into database ${dltFile.absolutePath}")
-            dataAccess.createInserter().use { inserter ->
-                DltMessageParser.parseFileWithCallback(dltFile.toPath()).forEach { progress ->
-                    inserter.insertMsg(progress.dltMessage as DltMessageV1)
-                    if (inserter.index % 20_000 == 0) {
-                        inserter.executeBatch()
-                        inserter.commit()
-                    }
+            val insertDuration = measureTimeMillis {
+                dataAccess.createInserter().use { inserter ->
 
-                    val percent = ((progress.progress ?: 0.0f) * 100).roundToInt()
-                    if (percent > lastPercent) {
-                        callback.invoke(progress.copy(progressText = "Loading file ${dltFile.absolutePath}"))
-                        lastPercent = percent
-                    }
+                    DltMessageParser.parseFileWithCallback(dltFile.toPath()).forEach { progress ->
+                        inserter.insertMsg(progress.dltMessage as DltMessageV1)
+                        if (inserter.index % 20_000 == 0) {
+                            inserter.executeBatch()
+                            inserter.commit()
+                        }
 
+                        val percent = ((progress.progress ?: 0.0f) * 100).roundToInt()
+                        if (percent > lastPercent) {
+                            callback.invoke(progress.copy(progressText = "Loading file ${dltFile.absolutePath}"))
+                            lastPercent = percent
+                        }
+
+                    }
+                    inserter.executeBatch()
+                    inserter.commit()
                 }
-                inserter.executeBatch()
-                inserter.commit()
             }
 
+            logger.info("Adding data to database took $insertDuration ms")
+
             callback.invoke(DltReadStatus(-1, null, null, null, "Creating indexes", 0, 0, null))
-            logger.info("Creating indexes")
-            dataAccess.createIndexes()
+
+            logger.info("Start creating indexes")
+            val indexDuration = measureTimeMillis {
+                dataAccess.createIndexes()
+            }
+            logger.info("Creating indexes took $indexDuration ms")
 
             dltTarget.isLoaded = true
             onFinished(dltTarget)

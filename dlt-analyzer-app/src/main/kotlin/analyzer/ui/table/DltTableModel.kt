@@ -73,7 +73,7 @@ class DltTableModel(private var dltTarget: DltTarget, private var internalFilter
             val offset = (rowIndex - (CACHED_ENTRIES_COUNT / 2)).coerceAtLeast(0)
 
             cachedEntries =
-                tableAccess.readData("${filterList.sqlWhere()} ORDER BY id LIMIT $CACHED_ENTRIES_COUNT OFFSET $offset")
+                tableAccess.readData(filterList.sqlWhere(), offset, CACHED_ENTRIES_COUNT)
             listOffset = offset
         }
 
@@ -109,6 +109,6 @@ class DltTableModel(private var dltTarget: DltTarget, private var internalFilter
                 return match.textColor!!
             }
         }
-        return null;
+        return null
     }
 }

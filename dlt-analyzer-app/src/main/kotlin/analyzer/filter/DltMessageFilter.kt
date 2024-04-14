@@ -1,5 +1,6 @@
 package analyzer.filter
 
+import db.DltLog
 import db.DltMessageDto
 import dltcore.MessageTypeInfo
 import kotlinx.serialization.KSerializer
@@ -9,6 +10,12 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import org.ktorm.dsl.*
+import org.ktorm.expression.FunctionExpression
+import org.ktorm.schema.BooleanSqlType
+import org.ktorm.schema.ColumnDeclaring
+import org.ktorm.support.sqlite.instr
+import org.ktorm.support.sqlite.toLowerCase
 import java.awt.Color
 import java.time.Instant
 import kotlin.math.max
@@ -67,7 +74,7 @@ data class DltMessageFilter(
     fun matches(entry: DltMessageDto): Boolean {
         return (!appIdActive || entry.appId == appId)
                 && (!contextIdActive || entry.contextId == contextId)
-                && (!messageTypeActive || entry.messageType.isInRange(messageTypeMin, messageTypeMax) )
+                && (!messageTypeActive || entry.messageType.isInRange(messageTypeMin, messageTypeMax))
                 && (!searchTextActive || textMatches(entry))
     }
 
@@ -80,61 +87,69 @@ data class DltMessageFilter(
                 || (searchTextActive && !searchText.isNullOrBlank())
                 )
 
-    fun sqlClause(): String {
-
+    fun sqlClauses(): List<ColumnDeclaring<Boolean>> {
         if (!active || action == FilterAction.MARKER) {
-            return ""
+            return emptyList()
         }
 
-        val sb = StringBuilder()
+        val list = mutableListOf<ColumnDeclaring<Boolean>>()
+
         if (action == FilterAction.INCLUDE) {
             if (appIdActive && !appId.isNullOrEmpty()) {
-                sb.andSql("app_id = '${appId!!.sqlEscape()}'")
+                val appIds = appId!!.split(",", ";", " ")
+                if (appIds.size == 1) {
+                    list.add(DltLog.appId.eq(appIds.first()))
+                } else {
+                    list.add(DltLog.appId.inList(appIds))
+                }
             }
             if (contextIdActive && !contextId.isNullOrEmpty()) {
-                sb.andSql("context_id = '${contextId!!.sqlEscape()}'")
+                list.add(DltLog.contextId.eq(contextId!!))
             }
             if (messageTypeActive && (messageTypeMin != null || messageTypeMax != null)) {
-                val values = MessageTypeInfo.getRange(messageTypeMin, messageTypeMax).map { "'${it.name.sqlEscape()}'" }
-                sb.andSql("message_type IN (${values.joinToString(",")})")
+                list.add(DltLog.messageType.inList(MessageTypeInfo.getRange(messageTypeMin, messageTypeMax)))
             }
             // TODO Timestamp
             if (searchTextActive && !searchText.isNullOrEmpty()) {
                 if (!searchTextIsRegEx) {
                     if (searchCaseInsensitive) {
-                        sb.andSql("INSTR(LOWER(message), '${searchText!!.lowercase().sqlEscape()})'")
+                        list.add(DltLog.message.toLowerCase().instr(searchText!!.lowercase()).gt(0))
                     } else {
-                        sb.andSql("INSTR(message, '${searchText!!.sqlEscape()}')")
+                        list.add(DltLog.message.instr(searchText!!).gt(0))
                     }
                 } else {
-                    sb.andSql("message REGEXP '${searchText!!.sqlEscape()})'")
+                    list.add(DltLog.message.regexp(searchText!!))
                 }
             }
         } else if (action == FilterAction.EXCLUDE) {
             if (appIdActive && !appId.isNullOrEmpty()) {
-                sb.andSql("app_id != '${appId!!.sqlEscape()}'")
+                val appIds = appId!!.split(",", ";", " ")
+                if (appIds.size == 1) {
+                    list.add(DltLog.appId.neq(appIds.first()))
+                } else {
+                    list.add(DltLog.appId.notInList(appIds))
+                }
             }
             if (contextIdActive && !contextId.isNullOrEmpty()) {
-                sb.andSql("context_id != '${contextId!!.sqlEscape()}'")
+                list.add(DltLog.contextId.neq(contextId!!))
             }
             if (messageTypeActive && (messageTypeMin != null || messageTypeMax != null)) {
-                val values = MessageTypeInfo.getRange(messageTypeMin, messageTypeMax).map { "'${it.name.sqlEscape()}'" }
-                sb.andSql("message_type NOT IN (${values.joinToString(",")})")
+                list.add(DltLog.messageType.notInList(MessageTypeInfo.getRange(messageTypeMin, messageTypeMax)))
             }
             // TODO Timestamp
             if (searchTextActive && !searchText.isNullOrEmpty()) {
                 if (!searchTextIsRegEx) {
                     if (searchCaseInsensitive) {
-                        sb.andSql("NOT INSTR(LOWER(message), '${searchText!!.lowercase().sqlEscape()}')")
+                        list.add(DltLog.message.toLowerCase().instr(searchText!!.lowercase()).eq(0))
                     } else {
-                        sb.andSql("NOT INSTR(message, '${searchText!!.sqlEscape()}')")
+                        list.add(DltLog.message.instr(searchText!!).eq(0))
                     }
                 } else {
-                    sb.andSql("message NOT REGEXP '${searchText!!.sqlEscape()}'")
+                    list.add(!DltLog.message.regexp(searchText!!))
                 }
             }
         }
-        return sb.toString()
+        return list
     }
 }
 
@@ -142,7 +157,10 @@ private fun MessageTypeInfo.isInRange(messageTypeMin: MessageTypeInfo?, messageT
     return this in MessageTypeInfo.getRange(messageTypeMin, messageTypeMax)
 }
 
-private fun MessageTypeInfo.Companion.getRange(messageTypeMin: MessageTypeInfo?, messageTypeMax: MessageTypeInfo?): Set<MessageTypeInfo> {
+private fun MessageTypeInfo.Companion.getRange(
+    messageTypeMin: MessageTypeInfo?,
+    messageTypeMax: MessageTypeInfo?
+): Set<MessageTypeInfo> {
     val minLvl = messageTypeMin?.ordinal ?: MessageTypeInfo.DLT_LOG_FATAL.ordinal
     val maxLvl = messageTypeMax?.ordinal ?: MessageTypeInfo.DLT_LOG_VERBOSE.ordinal
     val min = min(minLvl, maxLvl)
@@ -183,32 +201,36 @@ object InstantSerializer : KSerializer<Instant> {
     }
 }
 
-fun StringBuilder.andSql(sql: String) {
-    if (this.isNotEmpty()) {
-        this.append(" AND ")
-    }
-    this.append(sql)
-}
-
-fun String.sqlEscape() =
-    this.replace("\"", "\\\"").replace("'", "\\'")
-
-
-fun List<DltMessageFilter>?.sqlWhere(): String {
+fun List<DltMessageFilter>?.sqlWhere(): List<ColumnDeclaring<Boolean>> {
     if (this == null) {
-        return "1=1"
+        return emptyList()
     }
-    val sqlClauses = this
+
+    return this
         .filter { it.hasSqlClause() }
-        .map { it.sqlClause() }
-        .filter { it.isNotEmpty() }
-        .joinToString(" OR ") { "($it)" }
-    if (sqlClauses.isEmpty()) {
-        return "1=1"
-    }
-    return sqlClauses
+        .mapNotNull {
+            val clauses = it.sqlClauses()
+            if (clauses.isEmpty()) {
+                return@mapNotNull null
+            } else {
+                clauses.reduce { acc, columnDeclaring ->
+                    acc.and(columnDeclaring)
+                }
+            }
+        }
 }
 
 fun String.toMessageTypeInfo(): MessageTypeInfo? =
     MessageTypeInfo.getByShort(this)
 
+
+/**
+ * SQLite REGEXP function, translated to `regexp(left, right)`
+ */
+fun ColumnDeclaring<String>.regexp(right: String): FunctionExpression<Boolean> {
+    return FunctionExpression(
+        functionName = "regexp",
+        arguments = listOf(this.asExpression(), wrapArgument(right)),
+        sqlType = BooleanSqlType
+    )
+}

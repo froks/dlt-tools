@@ -1,6 +1,9 @@
 package db
 
 import dltcore.DltMessageV1
+import org.ktorm.database.Database
+import org.ktorm.dsl.*
+import org.ktorm.schema.ColumnDeclaring
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.PreparedStatement
@@ -27,10 +30,11 @@ CREATE TABLE IF NOT EXISTS DLT_LOG (
 
 class DltTableDataAccess(private val dataSource: DataSource) {
     private val logger = LoggerFactory.getLogger(DltTableDataAccess::class.java)
+    private val database = Database.connect(dataSource)
 
     fun initialize() {
         val duration = measureTimeMillis {
-            dataSource.connection.use { connection ->
+            database.useConnection { connection ->
                 connection.createStatement().use { it.executeUpdate("DROP TABLE IF EXISTS DLT_LOG") }
                 connection.createStatement().use { it.executeUpdate(CreateDltLogTable) }
                 connection.commit()
@@ -41,14 +45,15 @@ class DltTableDataAccess(private val dataSource: DataSource) {
 
     fun createInserter(): DltInserter {
         val connection = dataSource.connection
-        val stmt = connection.prepareStatement("INSERT INTO DLT_LOG (id, ts_sec, ts_nano, ecu_id, session_id, timestamp_header, app_id, context_id, message_type, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        val stmt =
+            connection.prepareStatement("INSERT INTO DLT_LOG (id, ts_sec, ts_nano, ecu_id, session_id, timestamp_header, app_id, context_id, message_type, message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         return DltInserter(connection, stmt)
     }
 
 
     fun createIndexes() {
         val duration = measureTimeMillis {
-            dataSource.connection.use { connection ->
+            database.useConnection { connection ->
                 connection.createStatement().use {
                     it.executeUpdate("CREATE INDEX IF NOT EXISTS DL_APPID ON DLT_LOG (app_id)")
                     it.executeUpdate("CREATE INDEX IF NOT EXISTS DL_ECUID ON DLT_LOG (ecu_id)")
@@ -62,72 +67,47 @@ class DltTableDataAccess(private val dataSource: DataSource) {
         logger.debug("Creating indexes took $duration ms")
     }
 
-    fun readDataPrepared(sqlClause: String, fillStatement: (PreparedStatement) -> Unit): List<DltMessageDto> {
+    fun readData(
+        sqlClausesOr: List<ColumnDeclaring<Boolean>>,
+        offset: Int? = null,
+        limit: Int? = null
+    ): List<DltMessageDto> {
         val list = mutableListOf<DltMessageDto>()
         val duration = measureTimeMillis {
-            dataSource.connection.use { connection ->
-                connection.prepareStatement("""
-                        SELECT id,ts_sec,ts_nano,ecu_id,session_id,timestamp_header,app_id,context_id,message_type,message 
-                        FROM DLT_LOG 
-                        WHERE $sqlClause
-                    """.trimIndent())
-                    .use { stmt ->
-                        fillStatement.invoke(stmt)
-                        val rs = stmt.executeQuery()
-                        while (rs.next()) {
-                            list.add(rs.toDto())
-                        }
-                    }
+            var query = database
+                .from(DltLog)
+                .select()
+                .whereWithOrConditions { list -> list.addAll(sqlClausesOr) }
+                .orderBy(DltLog.id.asc())
+
+            if (offset != null) {
+                query = query.offset(offset)
             }
+            if (limit != null) {
+                query = query.limit(limit)
+            }
+            logger.info("Executing ${query.sql}")
+            query.mapTo(list) { row -> DltLog.createEntity(row) }
         }
-        logger.debug("Reading data for '$sqlClause' took $duration ms")
+        logger.debug("Reading data for '$sqlClausesOr' took $duration ms")
         return list
     }
 
-    fun readData(sqlClause: String): List<DltMessageDto> {
-        val list = mutableListOf<DltMessageDto>()
-        val duration = measureTimeMillis {
-            dataSource.connection.use { connection ->
-                connection.prepareStatement("""
-                        SELECT id,ts_sec,ts_nano,ecu_id,session_id,timestamp_header,app_id,context_id,message_type,message 
-                        FROM DLT_LOG 
-                        WHERE $sqlClause
-                    """.trimIndent())
-                    .use { stmt ->
-                        val rs = stmt.executeQuery()
-                        while (rs.next()) {
-                            list.add(rs.toDto())
-                        }
-                    }
-            }
-        }
-        logger.debug("Reading data for '$sqlClause' took $duration ms")
-        return list
-    }
-
-    fun getEntryCount(sqlClause: String?): Long {
+    fun getEntryCount(sqlClausesOr: List<ColumnDeclaring<Boolean>>): Long {
         try {
-            logger.info("Retrieving count $sqlClause")
-            dataSource.connection.use { connection ->
-                return Companion.getEntryCount(connection, sqlClause)
+            logger.info("Retrieving count $sqlClausesOr")
+            val sql = database
+                .from(DltLog)
+                .select(count(DltLog.id))
+                .whereWithOrConditions { list -> list.addAll(sqlClausesOr) }
+
+            return database.executeQuery(sql.expression).use {
+                it.first()
+                it.getLong(1)
             }
         } catch (e: Exception) {
+            logger.error("Error while retrieving count", e)
             return -1
-        }
-    }
-
-    companion object {
-        fun getEntryCount(connection: Connection, sqlWhere: String?): Long {
-            val where = sqlWhere?.ifBlank { "1 = 1" } ?: "1 = 1"
-            connection.prepareStatement("SELECT COUNT(id) FROM DLT_LOG WHERE $where").use { stmt ->
-                stmt.executeQuery().use { rs ->
-                    if (rs.next()) {
-                        return rs.getLong(1)
-                    } else {
-                        return -1
-                    }
-                }
-            }
         }
     }
 }
