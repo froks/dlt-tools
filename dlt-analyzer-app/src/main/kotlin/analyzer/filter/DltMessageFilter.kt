@@ -13,6 +13,7 @@ import kotlinx.serialization.encoding.Encoder
 import org.ktorm.dsl.*
 import org.ktorm.expression.FunctionExpression
 import org.ktorm.schema.BooleanSqlType
+import org.ktorm.schema.Column
 import org.ktorm.schema.ColumnDeclaring
 import org.ktorm.support.sqlite.instr
 import org.ktorm.support.sqlite.toLowerCase
@@ -32,6 +33,8 @@ data class DltMessageFilter(
     var active: Boolean = true,
     var filterName: String = "New Filter",
     var action: FilterAction = FilterAction.INCLUDE,
+    var ecuIdActive: Boolean = false,
+    var ecuId: String? = null,
     var appIdActive: Boolean = false,
     var appId: String? = null,
     var contextIdActive: Boolean = false,
@@ -78,14 +81,24 @@ data class DltMessageFilter(
                 && (!searchTextActive || textMatches(entry))
     }
 
-    fun hasSqlClause(): Boolean =
-        active && (action == FilterAction.INCLUDE || action == FilterAction.EXCLUDE)
-                && ((appIdActive && !appId.isNullOrEmpty())
-                || (contextIdActive && !contextId.isNullOrEmpty())
-                || (messageTypeActive && (messageTypeMin != null || messageTypeMax != null))
-                || (timestampActive && (timestampStart != null || timestampEnd != null))
-                || (searchTextActive && !searchText.isNullOrBlank())
-                )
+    private fun MutableList<ColumnDeclaring<Boolean>>.addTextSql(column: Column<String>, active: Boolean, text: String?, negate: Boolean = false) {
+        if (active && !text.isNullOrEmpty()) {
+            val ecuIds = text.split(",", ";", " ")
+            if (ecuIds.size == 1) {
+                if (negate) {
+                    this.add(column.neq(ecuIds.first()))
+                } else {
+                    this.add(column.eq(ecuIds.first()))
+                }
+            } else {
+                if (negate) {
+                    this.add(column.notInList(ecuIds))
+                } else {
+                    this.add(column.inList(ecuIds))
+                }
+            }
+        }
+    }
 
     fun sqlClauses(): List<ColumnDeclaring<Boolean>> {
         if (!active || action == FilterAction.MARKER) {
@@ -95,17 +108,10 @@ data class DltMessageFilter(
         val list = mutableListOf<ColumnDeclaring<Boolean>>()
 
         if (action == FilterAction.INCLUDE) {
-            if (appIdActive && !appId.isNullOrEmpty()) {
-                val appIds = appId!!.split(",", ";", " ")
-                if (appIds.size == 1) {
-                    list.add(DltLog.appId.eq(appIds.first()))
-                } else {
-                    list.add(DltLog.appId.inList(appIds))
-                }
-            }
-            if (contextIdActive && !contextId.isNullOrEmpty()) {
-                list.add(DltLog.contextId.eq(contextId!!))
-            }
+            list.addTextSql(DltLog.ecuId, ecuIdActive, ecuId)
+            list.addTextSql(DltLog.appId, appIdActive, appId)
+            list.addTextSql(DltLog.contextId, contextIdActive, contextId)
+
             if (messageTypeActive && (messageTypeMin != null || messageTypeMax != null)) {
                 list.add(DltLog.messageType.inList(MessageTypeInfo.getRange(messageTypeMin, messageTypeMax)))
             }
@@ -122,17 +128,10 @@ data class DltMessageFilter(
                 }
             }
         } else if (action == FilterAction.EXCLUDE) {
-            if (appIdActive && !appId.isNullOrEmpty()) {
-                val appIds = appId!!.split(",", ";", " ")
-                if (appIds.size == 1) {
-                    list.add(DltLog.appId.neq(appIds.first()))
-                } else {
-                    list.add(DltLog.appId.notInList(appIds))
-                }
-            }
-            if (contextIdActive && !contextId.isNullOrEmpty()) {
-                list.add(DltLog.contextId.neq(contextId!!))
-            }
+            list.addTextSql(DltLog.ecuId, ecuIdActive, ecuId, true)
+            list.addTextSql(DltLog.appId, appIdActive, appId, true)
+            list.addTextSql(DltLog.contextId, contextIdActive, contextId, true)
+
             if (messageTypeActive && (messageTypeMin != null || messageTypeMax != null)) {
                 list.add(DltLog.messageType.notInList(MessageTypeInfo.getRange(messageTypeMin, messageTypeMax)))
             }
@@ -202,12 +201,11 @@ object InstantSerializer : KSerializer<Instant> {
 }
 
 fun List<DltMessageFilter>?.sqlWhere(): List<ColumnDeclaring<Boolean>> {
-    if (this == null) {
+    if (this.isNullOrEmpty()) {
         return emptyList()
     }
 
     return this
-        .filter { it.hasSqlClause() }
         .mapNotNull {
             val clauses = it.sqlClauses()
             if (clauses.isEmpty()) {

@@ -6,9 +6,11 @@ import analyzer.formatDefault
 import db.DltMessageDto
 import db.DltTableDataAccess
 import db.DltTarget
+import org.slf4j.LoggerFactory
 import java.awt.Color
 import javax.swing.table.AbstractTableModel
 import kotlin.reflect.KClass
+import kotlin.system.measureTimeMillis
 
 enum class TableColumns(val title: String, val columnClass: KClass<*>, val preferredWidth: Int) {
     ID("ID", Long::class, 60),
@@ -20,6 +22,8 @@ enum class TableColumns(val title: String, val columnClass: KClass<*>, val prefe
 
 
 class DltTableModel(private var dltTarget: DltTarget, private var internalFilterList: List<DltMessageFilter>?) : AbstractTableModel() {
+    private val log = LoggerFactory.getLogger(DltTableModel::class.java)
+
     var filterList: List<DltMessageFilter>?
         get() = internalFilterList
         set(v) {
@@ -72,8 +76,10 @@ class DltTableModel(private var dltTarget: DltTarget, private var internalFilter
         if (!isAvailable) {
             val offset = (rowIndex - (CACHED_ENTRIES_COUNT / 2)).coerceAtLeast(0)
 
-            cachedEntries =
-                tableAccess.readData(filterList.sqlWhere(), offset, CACHED_ENTRIES_COUNT)
+            val duration = measureTimeMillis {
+                cachedEntries = tableAccess.readData(filterList.sqlWhere(), offset, CACHED_ENTRIES_COUNT)
+            }
+            log.info("Reading ${cachedEntries.size} entries took $duration ms")
             listOffset = offset
         }
 
