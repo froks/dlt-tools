@@ -90,12 +90,8 @@ class DltAnalyzerWindow {
         ) { progress ->
             if (progress.progress != null) {
                 SwingUtilities.invokeLater {
-                    if (progress.progress != null) {
-                        progressBar.isIndeterminate = false
-                        progressBar.value = (progress.progress!! * 100f).roundToInt()
-                    } else {
-                        progressBar.isIndeterminate = true
-                    }
+                    progressBar.isIndeterminate = false
+                    progressBar.value = (progress.progress!! * 100f).roundToInt()
                     progressBar.string = progress.progressText
                 }
             } else if (!progressBar.isIndeterminate) {

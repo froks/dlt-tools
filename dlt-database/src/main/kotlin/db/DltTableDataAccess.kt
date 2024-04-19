@@ -73,17 +73,15 @@ class DltTableDataAccess(private val dataSource: DataSource) {
         limit: Int? = null
     ): List<DltMessageDto> {
         val list = mutableListOf<DltMessageDto>()
-        val duration = measureTimeMillis {
-            database
-                .from(DltLog)
-                .select()
-                .whereWithOrConditions { list -> list.addAll(sqlClausesOr) }
-                .orderBy(DltLog.id.asc())
-                .limit(offset, limit)
-                .mapTo(list) { row -> DltLog.createEntity(row) }
-        }
 
-        logger.debug("Reading data for took $duration ms")
+        database
+            .from(DltLog)
+            .select()
+            .whereWithOrConditions { list -> list.addAll(sqlClausesOr) }
+            .orderBy(DltLog.id.asc())
+            .limit(offset, limit)
+            .mapTo(list) { row -> DltLog.createEntity(row) }
+
         return list
     }
 
@@ -93,8 +91,6 @@ class DltTableDataAccess(private val dataSource: DataSource) {
                 .from(DltLog)
                 .select(count(DltLog.id))
                 .whereWithOrConditions { list -> list.addAll(sqlClausesOr) }
-
-            logger.info("Retrieving count ${sql.sql}")
 
             return database.executeQuery(sql.expression).use {
                 it.first()
