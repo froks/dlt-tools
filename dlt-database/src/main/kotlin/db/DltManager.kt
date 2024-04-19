@@ -53,8 +53,8 @@ object DltManager {
 
         if (reuseExisting) {
             logger.info("Reusing existing database file ${dbFile.absolutePath}")
+            dataAccess.createIndexes()
         }
-
 
         if (!reuseExisting) {
             dataAccess.initialize()
@@ -120,4 +120,6 @@ data class DltTarget(
     val dltFile: File?,
     val dataSource: DataSource,
     var isLoaded: Boolean = false,
-)
+) {
+    val dataAccess by lazy { DltTableDataAccess(dataSource) }
+}

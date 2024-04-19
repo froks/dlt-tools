@@ -4,7 +4,6 @@ import analyzer.asIcon
 import analyzer.formatDefault
 import analyzer.plugin.DltTargetAware
 import db.DltLog
-import db.DltTableDataAccess
 import db.DltTarget
 import jiconfont.icons.google_material_design_icons.GoogleMaterialDesignIcons
 import org.ktorm.dsl.inList
@@ -45,6 +44,7 @@ class LogPanel : JPanel(BorderLayout()), DltTargetAware {
         logger.info("Updating Text")
         if (this.appId != appId || force) {
             thread(isDaemon = true) {
+                val dltTarget = this.dltTarget
                 if (dltTarget == null) {
                     SwingUtilities.invokeLater {
                         textArea.text = "No dlt target is selected"
@@ -52,9 +52,9 @@ class LogPanel : JPanel(BorderLayout()), DltTargetAware {
                     return@thread
                 }
                 textArea.text = "Loading data"
-                val dao = DltTableDataAccess(dltTarget!!.dataSource)
+
                 val appIds = appId.split(',', ' ', ';').filter { it.isNotBlank() }
-                val data = dao.readData(listOf(DltLog.appId.inList(appIds)))
+                val data = dltTarget.dataAccess.readData(listOf(DltLog.appId.inList(appIds)))
                 val text = data.joinToString("\n") {
                     if (appIds.size > 1) {
                         "[${it.timestamp.formatDefault()} ${it.appId.padEnd(4, ' ')} ${it.messageType.shortText.padEnd(5, ' ')}] ${it.message.trimEnd()}"

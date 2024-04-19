@@ -36,7 +36,7 @@ class DltTableModel(private var dltTarget: DltTarget, private var internalFilter
 
     private val CACHED_ENTRIES_COUNT = 1_000
 
-    private var tableAccess: DltTableDataAccess
+    private var tableAccess: DltTableDataAccess = dltTarget.dataAccess
     private var rowCount: Int = 0
 
     private var listOffset = 0
@@ -44,7 +44,6 @@ class DltTableModel(private var dltTarget: DltTarget, private var internalFilter
     private var cachedEntriesColor: MutableMap<Int, Color> = mutableMapOf()
 
     init {
-        tableAccess = DltTableDataAccess(dltTarget.dataSource)
         rowCount = tableAccess.getEntryCount(filterList.sqlWhere()).toInt()
     }
 
