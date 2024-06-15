@@ -18,7 +18,7 @@ object DltManager {
 
     private fun isExistingFileComplete(dbFile: File, dltFile: File, dataAccess: DltTableDataAccess): Boolean {
         val expected = dataAccess.getEntryCount(emptyList())
-        val count: Long = DltMessageParser.parseFileWithCallback(dltFile.toPath()).count()
+        val count: Long = DltMessageParser.parseFile(dltFile.toPath()).count()
         logger.info("Existing database '${dbFile.name}' has $count entries, expected $expected")
         return expected == count
 
@@ -75,7 +75,7 @@ object DltManager {
             val insertDuration = measureTimeMillis {
                 dataAccess.createInserter().use { inserter ->
 
-                    DltMessageParser.parseFileWithCallback(dltFile.toPath()).forEach { progress ->
+                    DltMessageParser.parseFile(dltFile.toPath()).forEach { progress ->
                         inserter.insertMsg(progress.dltMessage as DltMessageV1)
                         if (inserter.index % 20_000 == 0) {
                             inserter.executeBatch()

@@ -19,7 +19,7 @@ fun main(args: Array<String>) {
     val appIds = args[1].split(',', ';').toSet()
     val appIdsInts = appIds.map { it.asIntValue() }
     var counter = 0
-    DltMessageParser.parseFileWithCallback(path).forEach { status ->
+    DltMessageParser.parseFile(path).forEach { status ->
         counter++
         val msg = status.dltMessage
         if (msg is DltMessageV1) {

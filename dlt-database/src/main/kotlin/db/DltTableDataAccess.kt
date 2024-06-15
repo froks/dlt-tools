@@ -1,12 +1,14 @@
 package db
 
 import dltcore.DltMessageV1
+import dltcore.MessageTypeInfo
 import org.ktorm.database.Database
 import org.ktorm.dsl.*
 import org.ktorm.schema.*
 import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.PreparedStatement
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import javax.sql.DataSource
 import kotlin.system.measureTimeMillis
@@ -74,6 +76,7 @@ class DltTableDataAccess(private val dataSource: DataSource) {
     ): List<DltMessageDto> {
         val list = mutableListOf<DltMessageDto>()
 
+/*
         database
             .from(DltLog)
             .select()
@@ -81,6 +84,56 @@ class DltTableDataAccess(private val dataSource: DataSource) {
             .orderBy(DltLog.id.asc())
             .limit(offset, limit)
             .mapTo(list) { row -> DltLog.createEntity(row) }
+*/
+
+        val sql = database
+            .from(DltLog)
+            .select(
+                DltLog.id,
+                DltLog.timestampSeconds, DltLog.timestampNanos,
+                DltLog.ecuId,
+                DltLog.appId,
+                DltLog.contextId,
+                DltLog.timestampHeader,
+                DltLog.sessionId,
+                DltLog.messageType,
+                DltLog.message,
+            )
+            .whereWithOrConditions { list -> list.addAll(sqlClausesOr) }
+            .orderBy(DltLog.id.asc())
+            .limit(offset, limit)
+
+        database.useConnection { connection ->
+            val expr = database.formatExpression(sql.expression)
+            connection.prepareStatement(expr.first).use { stmt ->
+                val params = expr.second
+                params.forEachIndexed { index, param ->
+                    when (param.sqlType) {
+                        VarcharSqlType -> stmt.setString(index + 1, param.value as String?)
+                        IntSqlType -> stmt.setInt(index + 1, param.value as Int)
+                        LongSqlType -> stmt.setLong(index + 1, param.value as Long)
+                    }
+                }
+                stmt.executeQuery().use { rs ->
+                    while (rs.next()) {
+                        list.add(
+                            DltMessageDto(
+                                id = rs.getLong(1),
+                                timestamp = Instant.ofEpochSecond(rs.getLong(2), rs.getLong(3)),
+                                ecuId = rs.getString(4) ?: "",
+                                appId = rs.getString(5) ?: "",
+                                contextId = rs.getString(6) ?: "",
+                                timestampHeader = rs.getInt(7).toUInt() ?: 0u,
+                                sessionId = rs.getInt(8),
+                                messageType = MessageTypeInfo.valueOf(rs.getString(9)!!),
+                                message = rs.getString(10) ?: "",
+                            )
+                        )
+                    }
+                }
+            }
+
+        }
 
         return list
     }

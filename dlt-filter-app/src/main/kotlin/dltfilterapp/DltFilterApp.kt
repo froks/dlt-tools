@@ -236,7 +236,7 @@ class DltFilterApp : JFrame("dlt-filter") {
             RandomAccessFile(destinationFile, "rw").use { randomAccessFile ->
 
                 val bb = ByteBuffer.allocate(100_000)
-                DltMessageParser.parseFileWithCallback(file.toPath()).forEach { status ->
+                DltMessageParser.parseFile(file.toPath()).forEach { status ->
                     if (status.filePosition != null && status.fileSize != null) {
                         percent = (status.filePosition!!.toFloat() / status.fileSize!!.toFloat()) * 100
                     } else if (percent == 0f) {

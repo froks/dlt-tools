@@ -23,6 +23,8 @@ enum class TableColumns(val title: String, val columnClass: KClass<*>, val prefe
 
 class DltTableModel(private var dltTarget: DltTarget, private var internalFilterList: List<DltMessageFilter>?) : AbstractTableModel() {
     private val log = LoggerFactory.getLogger(DltTableModel::class.java)
+    private val CACHED_ENTRIES_COUNT = 1_000
+    private val READ_ALL = false
 
     var filterList: List<DltMessageFilter>?
         get() = internalFilterList
@@ -34,7 +36,6 @@ class DltTableModel(private var dltTarget: DltTarget, private var internalFilter
             fireTableDataChanged()
         }
 
-    private val CACHED_ENTRIES_COUNT = 1_000
 
     private var tableAccess: DltTableDataAccess = dltTarget.dataAccess
     private var rowCount: Int = 0
@@ -73,13 +74,21 @@ class DltTableModel(private var dltTarget: DltTarget, private var internalFilter
     private fun getRow(rowIndex: Int): DltMessageDto {
         val isAvailable = rowIndex in listOffset until listOffset + cachedEntries.size
         if (!isAvailable) {
-            val offset = (rowIndex - (CACHED_ENTRIES_COUNT / 2)).coerceAtLeast(0)
+            if (READ_ALL) {
+                val duration = measureTimeMillis {
+                    cachedEntries = tableAccess.readData(filterList.sqlWhere(), null, null)
+                }
+                log.info("Reading ${cachedEntries.size} entries took $duration ms")
+                listOffset = 0
+            } else {
+                val offset = (rowIndex - (CACHED_ENTRIES_COUNT / 2)).coerceAtLeast(0)
 
-            val duration = measureTimeMillis {
-                cachedEntries = tableAccess.readData(filterList.sqlWhere(), offset, CACHED_ENTRIES_COUNT)
+                val duration = measureTimeMillis {
+                    cachedEntries = tableAccess.readData(filterList.sqlWhere(), offset, CACHED_ENTRIES_COUNT)
+                }
+                log.info("Reading ${cachedEntries.size} entries took $duration ms")
+                listOffset = offset
             }
-            log.info("Reading ${cachedEntries.size} entries took $duration ms")
-            listOffset = offset
         }
 
         return cachedEntries[rowIndex - listOffset]
