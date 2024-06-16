@@ -13,7 +13,7 @@ repositories {
 }
 
 dependencies {
-    implementation(project(":dlt-core"))
+    implementation("io.github.froks:dlt-core:0.1.0")
     implementation(project(":dlt-database"))
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
@@ -47,7 +47,7 @@ kotlin {
 }
 
 tasks.named("jar") {
-    dependsOn(":dlt-core:jar", ":dlt-database:jar")
+    dependsOn(":dlt-database:jar")
 }
 
 compose.desktop {

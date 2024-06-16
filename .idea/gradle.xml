@@ -10,7 +10,6 @@
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/dlt-analyzer-app" />
-            <option value="$PROJECT_DIR$/dlt-core" />
             <option value="$PROJECT_DIR$/dlt-database" />
             <option value="$PROJECT_DIR$/dlt-filter-app" />
           </set>

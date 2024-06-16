@@ -1,6 +1,5 @@
 rootProject.name = "dlt-tools"
 
-include("dlt-core")
 include("dlt-database")
 include("dlt-filter-app")
 include("dlt-analyzer-app")
