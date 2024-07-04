@@ -121,12 +121,17 @@ class DltFilterApp : JFrame("dlt-filter") {
         btnOpenFile.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         btnOpenFile.addActionListener {
             SwingUtilities.invokeLater {
+                val appIdsFiltered = checkAppIdsSet()
+                if (appIdsFiltered.isEmpty()) {
+                    return@invokeLater;
+                }
                 val lastDirectory = dltTools.get("lastDirectory", null)?.toExistingDirectory()
-                val fileChooser = DltFileChooser("Select file to process", lastDirectory)
-                val file = fileChooser.showDialog(null)
-                if (file != null) {
-                    dltTools.put("lastDirectory", file.parent)
-                    processFile(file)
+                val files = DltFileChooser.showDialog(this, "Select file to process", lastDirectory)
+                if (files.isNotEmpty()) {
+                    dltTools.put("lastDirectory", files.first().parent)
+                    files.forEach { file ->
+                        processFile(file)
+                    }
                 }
             }
         }
@@ -191,7 +196,7 @@ class DltFilterApp : JFrame("dlt-filter") {
         }
     }
 
-    private fun processFile(file: File): Boolean {
+    private fun checkAppIdsSet(): Set<Int> {
         val appIds = textField.text.verifyAndFormatAppIds()
         if (appIds == null) {
             JOptionPane.showMessageDialog(
@@ -200,27 +205,37 @@ class DltFilterApp : JFrame("dlt-filter") {
                 "Error",
                 JOptionPane.ERROR_MESSAGE
             )
+            return emptySet()
+        }
+        return appIds.split(";").map { it.asIntValue() }.toSet()
+    }
+
+    private fun processFile(file: File): Boolean {
+        val appIdsFiltered = checkAppIdsSet()
+        if (appIdsFiltered.isEmpty()) {
+            return false;
+        }
+
+        val destinationFile = DltFileChooser.showDialog(this, "Choose destination file", File(file.parent), file.nameWithoutExtension + "-filtered.dlt", true)
+        if (destinationFile.isEmpty()) {
             return false
         }
-        val appIdsFiltered = appIds.split(';').map { it.asIntValue() }.toSet()
+        val outFile = destinationFile.first()
+//        if (outFile.exists()) {
+//            val res = JOptionPane.showConfirmDialog(
+//                this,
+//                "File exists already. Overwrite?",
+//                "Confirmation",
+//                JOptionPane.YES_OPTION or JOptionPane.CANCEL_OPTION
+//            )
+//            if (res == JOptionPane.CANCEL_OPTION) {
+//                return false
+//            }
+//            if (!outFile.delete()) {
+//                throw IOException("Couldn't delete file ${outFile.absolutePath}")
+//            }
+//        }
 
-        val destinationFile = DltFileChooser(
-            "Choose destination file", File(file.parent), file.nameWithoutExtension + "-filtered" + ".dlt"
-        ).showDialog(this) ?: return false
-        if (destinationFile.exists()) {
-            val res = JOptionPane.showConfirmDialog(
-                this,
-                "File exists already. Overwrite?",
-                "Confirmation",
-                JOptionPane.YES_OPTION or JOptionPane.CANCEL_OPTION
-            )
-            if (res == JOptionPane.CANCEL_OPTION) {
-                return false
-            }
-            if (!destinationFile.delete()) {
-                throw IOException("Couldn't delete file ${destinationFile.absolutePath}")
-            }
-        }
 
         thread {
             SwingUtilities.invokeAndWait {
@@ -233,7 +248,7 @@ class DltFilterApp : JFrame("dlt-filter") {
             var percent = 0f
             var lastPercent = 0f
 
-            RandomAccessFile(destinationFile, "rw").use { randomAccessFile ->
+            RandomAccessFile(outFile, "rw").use { randomAccessFile ->
 
                 val bb = ByteBuffer.allocate(100_000)
                 DltMessageParser.parseFile(file.toPath()).forEach { status ->
@@ -269,7 +284,7 @@ class DltFilterApp : JFrame("dlt-filter") {
 
             SwingUtilities.invokeLater {
                 progressBar.value = 100
-                progressBar.string = "finished: file was written to ${destinationFile.absolutePath}"
+                progressBar.string = "finished: file was written to ${outFile.absolutePath}"
             }
         }
         return true
