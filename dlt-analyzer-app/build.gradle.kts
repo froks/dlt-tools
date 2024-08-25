@@ -13,7 +13,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.froks:dlt-core:0.1.1")
+    implementation("io.github.froks:dlt-core:0.2.2")
     implementation(project(":dlt-database"))
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")

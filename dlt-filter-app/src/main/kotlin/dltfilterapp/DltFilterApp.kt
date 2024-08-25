@@ -6,6 +6,7 @@ import jiconfont.swing.IconFontSwing
 import dltcore.DltMessageParser
 import dltcore.DltMessageV1
 import dltcore.asIntValue
+import library.ByteBufferBinaryOutputStream
 import java.awt.*
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
@@ -251,6 +252,7 @@ class DltFilterApp : JFrame("dlt-filter") {
             RandomAccessFile(outFile, "rw").use { randomAccessFile ->
 
                 val bb = ByteBuffer.allocate(100_000)
+
                 DltMessageParser.parseFile(file.toPath()).forEach { status ->
                     if (status.filePosition != null && status.fileSize != null) {
                         percent = (status.filePosition!!.toFloat() / status.fileSize!!.toFloat()) * 100
@@ -274,7 +276,7 @@ class DltFilterApp : JFrame("dlt-filter") {
                     if (msg == null || !appIdsFiltered.contains(msg.extendedHeader?.apid)) {
                         return@forEach
                     }
-                    msg.write(bb)
+                    msg.write(ByteBufferBinaryOutputStream(bb))
                     bb.flip()
                     randomAccessFile.write(bb.array(), bb.position(), bb.limit())
                     bb.clear()

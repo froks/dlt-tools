@@ -74,7 +74,6 @@ class DltTableDataAccess(private val dataSource: DataSource) {
         offset: Int? = null,
         limit: Int? = null
     ): List<DltMessageDto> {
-        val list = mutableListOf<DltMessageDto>()
 
 /*
         database
@@ -99,9 +98,11 @@ class DltTableDataAccess(private val dataSource: DataSource) {
                 DltLog.messageType,
                 DltLog.message,
             )
-            .whereWithOrConditions { list -> list.addAll(sqlClausesOr) }
+            .whereWithOrConditions { where -> where.addAll(sqlClausesOr) }
             .orderBy(DltLog.id.asc())
             .limit(offset, limit)
+
+        val list = mutableListOf<DltMessageDto>()
 
         database.useConnection { connection ->
             val expr = database.formatExpression(sql.expression)

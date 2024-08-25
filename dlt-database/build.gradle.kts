@@ -10,7 +10,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.froks:dlt-core:0.1.1")
+    implementation("io.github.froks:dlt-core:0.2.2")
     implementation("org.slf4j:slf4j-api:2.0.12")
     implementation("org.xerial:sqlite-jdbc:3.45.2.0")
     implementation("com.zaxxer:HikariCP:5.1.0")

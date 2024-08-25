@@ -18,7 +18,7 @@ object DltManager {
 
     private fun isExistingFileComplete(dbFile: File, dltFile: File, dataAccess: DltTableDataAccess): Boolean {
         val expected = dataAccess.getEntryCount(emptyList())
-        val count: Long = DltMessageParser.parseFile(dltFile.toPath()).count()
+        val count: Long = DltMessageParser.parseFile(dltFile.toPath()).sumOf { 1L }
         logger.info("Existing database '${dbFile.name}' has $count entries, expected $expected")
         return expected == count
 
@@ -96,7 +96,7 @@ object DltManager {
 
             logger.info("Adding data to database took $insertDuration ms")
 
-            callback.invoke(DltReadStatus(-1, null, null, null, "Creating indexes", 0, 0, null))
+            callback.invoke(DltReadStatus(-1, null, null, null, "Creating indexes", 0, 0, null, null))
 
             logger.info("Start creating indexes")
             val indexDuration = measureTimeMillis {
