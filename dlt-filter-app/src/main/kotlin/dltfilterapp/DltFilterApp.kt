@@ -1,6 +1,15 @@
 package dltfilterapp
 
 import com.formdev.flatlaf.FlatLightLaf
+import com.github.ajalt.clikt.core.CliktCommand
+import com.github.ajalt.clikt.core.main
+import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.help
+import com.github.ajalt.clikt.parameters.arguments.optional
+import com.github.ajalt.clikt.parameters.options.help
+import com.github.ajalt.clikt.parameters.options.multiple
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.types.file
 import jiconfont.icons.google_material_design_icons.GoogleMaterialDesignIcons
 import jiconfont.swing.IconFontSwing
 import dltcore.DltMessageParser
@@ -18,10 +27,18 @@ import java.util.prefs.Preferences
 import javax.swing.*
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
+import kotlin.collections.contains
 import kotlin.concurrent.thread
 import kotlin.math.roundToInt
+import kotlin.system.exitProcess
 
-class DltFilterApp : JFrame("dlt-filter") {
+data class CliOptions(
+    val inputFile: File? = null,
+    val apIdFilter: List<String> = emptyList(),
+    val outputFile: File? = null,
+)
+
+class DltFilterAppFrame(private val cliOptions: CliOptions) : JFrame("dlt-filter") {
     private val dltTools = Preferences.userRoot().node("dlt-tools")
     private lateinit var btnOpenFile: JButton
     private lateinit var progressBar: JProgressBar
@@ -182,7 +199,7 @@ class DltFilterApp : JFrame("dlt-filter") {
     private fun saveLastText() {
         SwingUtilities.invokeLater {
             synchronized(this) {
-                if (!textField.text.equals(dltTools.get("lastFilterText", null))) {
+                if (textField.text.equals(dltTools.get("lastFilterText", null))) {
                     return@invokeLater
                 }
                 if (lastTextTimer == null) {
@@ -209,6 +226,58 @@ class DltFilterApp : JFrame("dlt-filter") {
             return emptySet()
         }
         return appIds.split(";").map { it.asIntValue() }.toSet()
+    }
+
+    private fun filterFile(file: File, outFile: File, apIds: Set<Int>) {
+        SwingUtilities.invokeAndWait {
+            progressBar.isStringPainted = true
+            progressBar.string = "processing"
+            progressBar.maximum = 100
+            progressBar.value = 0
+        }
+
+        var percent = 0f
+        var lastPercent = 0f
+
+        RandomAccessFile(outFile, "rw").use { randomAccessFile ->
+
+            val bb = ByteBuffer.allocate(100_000)
+
+            DltMessageParser.parseFile(file.toPath()).forEach { status ->
+                if (status.filePosition != null && status.fileSize != null) {
+                    percent = (status.filePosition!!.toFloat() / status.fileSize!!.toFloat()) * 100
+                } else if (percent == 0f) {
+                    SwingUtilities.invokeLater {
+                        progressBar.isIndeterminate = true
+                    }
+                }
+
+                if (percent > lastPercent + 1) {
+                    lastPercent = percent
+                    SwingUtilities.invokeLater {
+                        if (!progressBar.isIndeterminate) {
+                            progressBar.value = percent.roundToInt()
+                        }
+                    }
+                }
+
+
+                val msg = status.dltMessage as? DltMessageV1
+                if (msg == null || !apIds.contains(msg.extendedHeader?.apid)) {
+                    return@forEach
+                }
+                msg.write(ByteBufferBinaryOutputStream(bb))
+                bb.flip()
+                randomAccessFile.write(bb.array(), bb.position(), bb.limit())
+                bb.clear()
+
+            }
+        }
+
+        SwingUtilities.invokeLater {
+            progressBar.value = 100
+            progressBar.string = "finished: file was written to ${outFile.absolutePath}"
+        }
     }
 
     private fun processFile(file: File): Boolean {
@@ -239,55 +308,7 @@ class DltFilterApp : JFrame("dlt-filter") {
 
 
         thread {
-            SwingUtilities.invokeAndWait {
-                progressBar.isStringPainted = true
-                progressBar.string = "processing"
-                progressBar.maximum = 100
-                progressBar.value = 0
-            }
-
-            var percent = 0f
-            var lastPercent = 0f
-
-            RandomAccessFile(outFile, "rw").use { randomAccessFile ->
-
-                val bb = ByteBuffer.allocate(100_000)
-
-                DltMessageParser.parseFile(file.toPath()).forEach { status ->
-                    if (status.filePosition != null && status.fileSize != null) {
-                        percent = (status.filePosition!!.toFloat() / status.fileSize!!.toFloat()) * 100
-                    } else if (percent == 0f) {
-                        SwingUtilities.invokeLater {
-                            progressBar.isIndeterminate = true
-                        }
-                    }
-
-                    if (percent > lastPercent + 1) {
-                        lastPercent = percent
-                        SwingUtilities.invokeLater {
-                            if (!progressBar.isIndeterminate) {
-                                progressBar.value = percent.roundToInt()
-                            }
-                        }
-                    }
-
-
-                    val msg = status.dltMessage as? DltMessageV1
-                    if (msg == null || !appIdsFiltered.contains(msg.extendedHeader?.apid)) {
-                        return@forEach
-                    }
-                    msg.write(ByteBufferBinaryOutputStream(bb))
-                    bb.flip()
-                    randomAccessFile.write(bb.array(), bb.position(), bb.limit())
-                    bb.clear()
-
-                }
-            }
-
-            SwingUtilities.invokeLater {
-                progressBar.value = 100
-                progressBar.string = "finished: file was written to ${outFile.absolutePath}"
-            }
+            filterFile(file, outFile, appIdsFiltered)
         }
         return true
     }
@@ -296,12 +317,72 @@ class DltFilterApp : JFrame("dlt-filter") {
         loadPreferences()
 
         isVisible = true
+
+        if (cliOptions.inputFile != null) {
+            val file = cliOptions.inputFile
+            SwingUtilities.invokeLater {
+                val apIds = if (cliOptions.apIdFilter.isEmpty()) {
+                    val appIds = JOptionPane.showInputDialog("Please enter app-ids", dltTools.get("lastFilterText", ""))
+                    appIds?.split(";", ",", " ") ?: exitProcess(0)
+                } else {
+                    cliOptions.apIdFilter
+                }
+
+                textField.text = apIds.joinToString(" ")
+                saveLastText()
+
+                val outputFile = if (cliOptions.outputFile == null) {
+                    val outputFiles = DltFileChooser.showDialog(
+                        this,
+                        "Choose destination file",
+                        file.parentFile,
+                        file.nameWithoutExtension + "-filtered.dlt",
+                        true
+                    )
+                    if (outputFiles.isEmpty()) {
+                        exitProcess(0)
+                    }
+                    outputFiles.first()
+                } else {
+                    cliOptions.outputFile
+                }
+
+                thread {
+                    filterFile(file, outputFile, apIds.map { it.asIntValue() }.toSet())
+                }
+            }
+        }
+    }
+}
+
+class DltFilterApp : CliktCommand("dlt-filter") {
+    val dltFile by argument("dlt-file")
+            .help("Input DLT file to process for filtering")
+            .file(mustExist = true, canBeDir = false, canBeFile = true, mustBeReadable = true)
+            .optional()
+
+    val outputFile by option("-O", "--output-file")
+        .help("File to output the filtered dlt-data to")
+        .file(mustExist = false, canBeDir = false, canBeFile = true)
+
+    val filters by option("-A", "--apid")
+        .help("apid's to filter in the dlt")
+        .multiple(required = false)
+
+
+    override fun run() {
+        val options = CliOptions(
+            inputFile = dltFile,
+            apIdFilter = filters.flatMap { it.split(";", " ", ",").map { it.trim() }.filter { it.isNotEmpty()  } },
+            outputFile = outputFile,
+        )
+        DltFilterAppFrame(options).showApp()
     }
 
     companion object {
         @JvmStatic
-        fun main(s: Array<String>) {
-            DltFilterApp().showApp()
+        fun main(args: Array<String>) {
+            DltFilterApp().main(args)
         }
     }
 }
