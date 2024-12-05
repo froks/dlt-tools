@@ -83,8 +83,15 @@ class DltFilterAppFrame(private val cliOptions: CliOptions) : JFrame("dlt-filter
 
     private fun createProcessFilePanel(): JPanel {
         val panel = JPanel()
+        panel.transferHandler = FileDropHandler(::processFiles)
         panel.add(createProcessFileButton())
         return panel
+    }
+
+    private fun processFiles(files: List<File>) {
+        files.forEach {
+            processFile(it)
+        }
     }
 
     private fun createEditor(): JPanel {
