@@ -26,7 +26,7 @@ jobs:
         uses: gradle/gradle-build-action@v3
       - name: build and test
         run: |
-          ./gradlew packageDistributionForCurrentOS
+          ./gradlew --stacktrace packageDistributionForCurrentOS
       - name: upload artifacts
         uses: actions/upload-artifact@v4
         id: artifacts
