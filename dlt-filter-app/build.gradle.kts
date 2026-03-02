@@ -3,6 +3,7 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 plugins {
     kotlin("jvm")
     id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 repositories {
@@ -11,7 +12,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.froks:dlt-core:0.2.2")
+    implementation("io.github.froks:dlt-core:0.4.1")
     implementation("com.formdev:flatlaf:3.4.1")
     implementation(compose.desktop.currentOs)
     implementation("com.github.jiconfont:jiconfont-swing:1.0.0")
@@ -26,7 +27,7 @@ tasks.test {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 compose.desktop {

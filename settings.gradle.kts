@@ -12,8 +12,9 @@ pluginManagement {
         google()
     }
     plugins {
-        kotlin("jvm").version("1.9.21")
-        id("org.jetbrains.compose").version("1.6.1")
+        kotlin("jvm").version("2.3.10")
+        id("org.jetbrains.kotlin.multiplatform").version("2.3.10")
+        id("org.jetbrains.kotlin.plugin.compose").version("2.3.10")
     }
 }
 

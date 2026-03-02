@@ -2,8 +2,9 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
     kotlin("jvm")
-    kotlin("plugin.serialization") version "1.9.21"
+    kotlin("plugin.serialization") version "2.3.10"
     id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 repositories {
@@ -13,13 +14,13 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.froks:dlt-core:0.2.2")
+    implementation("io.github.froks:dlt-core:0.4.1")
     implementation(project(":dlt-database"))
 
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
     implementation("com.jgoodies:jgoodies-forms:1.9.0")
 
-    implementation("org.apache.commons:commons-lang3:3.14.0")
+    implementation("org.apache.commons:commons-lang3:3.18.0")
     implementation("org.oxbow:swingbits:1.3.0")
     implementation("com.formdev:flatlaf:3.4.1")
     implementation("com.formdev:flatlaf-extras:3.4.1")
@@ -33,7 +34,7 @@ dependencies {
     implementation("com.github.jiconfont:jiconfont-google_material_design_icons:2.2.0.2")
     implementation("com.github.jiconfont:jiconfont-font_awesome:4.7.0.1")
 
-    implementation("ch.qos.logback:logback-classic:1.5.3")
+    implementation("ch.qos.logback:logback-classic:1.5.23")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
 }
@@ -43,7 +44,7 @@ tasks.test {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 tasks.named("jar") {

@@ -124,7 +124,7 @@ class DltTableDataAccess(private val dataSource: DataSource) {
                                 ecuId = rs.getString(4) ?: "",
                                 appId = rs.getString(5) ?: "",
                                 contextId = rs.getString(6) ?: "",
-                                timestampHeader = rs.getInt(7).toUInt() ?: 0u,
+                                timestampHeader = rs.getInt(7).toUInt(),
                                 sessionId = rs.getInt(8),
                                 messageType = MessageTypeInfo.valueOf(rs.getString(9)!!),
                                 message = rs.getString(10) ?: "",
