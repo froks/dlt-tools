@@ -12,12 +12,12 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.froks:dlt-core:0.4.1")
+    implementation("io.github.froks:dlt-core:0.4.3")
     implementation("com.formdev:flatlaf:3.4.1")
     implementation(compose.desktop.currentOs)
     implementation("com.github.jiconfont:jiconfont-swing:1.0.0")
     implementation("com.github.jiconfont:jiconfont-google_material_design_icons:2.2.0.2")
-    implementation("com.github.ajalt.clikt:clikt:5.0.1")
+    implementation("com.github.ajalt.clikt:clikt:5.1.0")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
 }

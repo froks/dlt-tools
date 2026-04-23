@@ -5,8 +5,11 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1"
 }
 
+group = "de.debugco"
+version = "1.0.0"
+
 application {
-    mainClass.set("de.debugco.dltmcp.MainKt")
+    mainClass.set("de.debugco.dltmcp.DltMcpServerKt")
 }
 
 dependencies {
