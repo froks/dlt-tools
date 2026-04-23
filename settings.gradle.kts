@@ -3,6 +3,7 @@ rootProject.name = "dlt-tools"
 include("dlt-database")
 include("dlt-filter-app")
 include("dlt-analyzer-app")
+include("dlt-mcp")
 
 pluginManagement {
     repositories {
