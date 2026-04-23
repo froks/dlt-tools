@@ -14,7 +14,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.froks:dlt-core:0.4.1")
+    implementation("io.github.froks:dlt-core:0.4.3")
     implementation(project(":dlt-database"))
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.10.0")
@@ -34,7 +34,7 @@ dependencies {
     implementation("com.github.jiconfont:jiconfont-google_material_design_icons:2.2.0.2")
     implementation("com.github.jiconfont:jiconfont-font_awesome:4.7.0.1")
 
-    implementation("ch.qos.logback:logback-classic:1.5.23")
+    implementation("ch.qos.logback:logback-classic:1.5.32")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test")
 }

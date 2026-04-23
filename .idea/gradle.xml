@@ -5,13 +5,13 @@
     <option name="linkedExternalProjectsSettings">
       <GradleProjectSettings>
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
-        <option name="gradleHome" value="$PROJECT_DIR$/../../../../../devel/tools/gradle-6.1.1" />
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
             <option value="$PROJECT_DIR$/dlt-analyzer-app" />
             <option value="$PROJECT_DIR$/dlt-database" />
             <option value="$PROJECT_DIR$/dlt-filter-app" />
+            <option value="$PROJECT_DIR$/dlt-mcp" />
           </set>
         </option>
       </GradleProjectSettings>

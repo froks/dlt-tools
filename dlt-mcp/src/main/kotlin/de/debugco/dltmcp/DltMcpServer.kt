@@ -156,7 +156,7 @@ fun main(): Unit = runBlocking {
             optionalString("appId", "Filter by application ID (exact match)")
             optionalString("contextId", "Filter by context ID (exact match)")
             optionalString("ecuId", "Filter by ECU ID (exact match)")
-            optionalString("messageType", "Filter by message type, e.g. LOG_INFO, LOG_WARN, LOG_ERROR")
+            optionalString("messageType", "Filter by message type, e.g. DLT_LOG_FATAL, DLT_LOG_ERROR, DLT_LOG_WARN, DLT_LOG_INFO, DLT_LOG_DEBUG, DLT_LOG_VERBOSE")
             optionalString("contains", "Filter messages whose text contains this string (case-insensitive)")
             optionalString("timestampFrom", "Include only messages at or after this ISO 8601 timestamp, e.g. 2024-01-15T10:30:00Z")
             optionalString("timestampTo", "Include only messages at or before this ISO 8601 timestamp, e.g. 2024-01-15T10:35:00Z")
